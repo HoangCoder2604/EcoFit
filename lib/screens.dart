@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'app/router/app_routes.dart';
+import 'app/state/eco_fit_app_state.dart';
 import 'data.dart';
 import 'theme.dart';
 import 'widgets.dart';
@@ -103,7 +105,8 @@ class SplashScreen extends StatelessWidget {
               ),
             ),
             FilledButton.icon(
-              onPressed: () => Navigator.pushNamed(context, '/onboarding-food'),
+              onPressed: () =>
+                  Navigator.pushNamed(context, AppRoutes.onboardingFood),
               icon: const Icon(Icons.arrow_forward),
               iconAlignment: IconAlignment.end,
               label: const Text('Bắt đầu hành trình'),
@@ -152,7 +155,7 @@ class FoodOnboardingScreen extends StatelessWidget {
       ),
     ],
     dot: 0,
-    next: '/onboarding-workout',
+    next: AppRoutes.onboardingWorkout,
   );
 }
 
@@ -208,7 +211,7 @@ class WorkoutOnboardingScreen extends StatelessWidget {
       ),
     ],
     dot: 1,
-    next: '/login',
+    next: AppRoutes.login,
   );
 }
 
@@ -239,7 +242,7 @@ class OnboardingLayout extends StatelessWidget {
               alignment: Alignment.centerRight,
               child: TextButton(
                 onPressed: () =>
-                    Navigator.pushReplacementNamed(context, '/login'),
+                    Navigator.pushReplacementNamed(context, AppRoutes.login),
                 child: const Text('Bỏ qua', style: TextStyle(color: ecoMuted)),
               ),
             ),
@@ -433,7 +436,7 @@ class _LoginScreenState extends State<LoginScreen> {
             FilledButton(
               onPressed: () => Navigator.pushNamedAndRemoveUntil(
                 context,
-                '/home',
+                AppRoutes.home,
                 (_) => false,
               ),
               child: Text(login ? 'Đăng nhập' : 'Tạo tài khoản'),
@@ -459,7 +462,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 _toast(context, 'Đã xác thực tài khoản Google');
                 Navigator.pushNamedAndRemoveUntil(
                   context,
-                  '/home',
+                  AppRoutes.home,
                   (_) => false,
                 );
               },
@@ -517,131 +520,141 @@ class _LoginScreenState extends State<LoginScreen> {
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
   @override
-  Widget build(BuildContext context) => EcoShell(
-    child: ListView(
-      padding: pagePadding,
-      children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'CHÀO BUỔI SÁNG',
-                    style: TextStyle(
-                      fontSize: 9,
-                      letterSpacing: 1.2,
-                      color: ecoGreen,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Xin chào,\nMinh Anh! 👋',
-                    style: Theme.of(context).textTheme.headlineSmall,
-                  ),
-                  const Text(
-                    'Cùng cố gắng vì phiên bản tốt hơn mỗi ngày nhé!',
-                    style: TextStyle(fontSize: 10, color: ecoMuted),
-                  ),
-                ],
-              ),
-            ),
-            const CircleAvatar(
-              radius: 22,
-              backgroundColor: Color(0xFFB4D4A9),
-              child: Text(
-                'MA',
-                style: TextStyle(color: ecoText, fontWeight: FontWeight.w800),
-              ),
-            ),
-          ],
-        ),
-        gap16,
-        EcoCard(
-          child: Column(
+  Widget build(BuildContext context) {
+    final appState = EcoFitAppState.instance;
+    final metrics = appState.metrics;
+    return EcoShell(
+      child: ListView(
+        padding: pagePadding,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              SectionTitle(
-                'Mục tiêu hôm nay',
-                action: 'Xem chi tiết ›',
-                onTap: () => Navigator.pushNamed(context, '/metrics'),
-              ),
-              Row(
-                children: const [
-                  MacroRing(),
-                  SizedBox(width: 20),
-                  Expanded(
-                    child: MacroLegend(
-                      values: [
-                        (Color(0xFFE66B58), 'Protein', '72 / 120g'),
-                        (Color(0xFFF1A63E), 'Carb', '130 / 250g'),
-                        (Color(0xFF5C92DE), 'Fat', '40 / 70g'),
-                      ],
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'CHÀO BUỔI SÁNG',
+                      style: TextStyle(
+                        fontSize: 9,
+                        letterSpacing: 1.2,
+                        color: ecoGreen,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Xin chào,\n${appState.name}! 👋',
+                      style: Theme.of(context).textTheme.headlineSmall,
+                    ),
+                    const Text(
+                      'Cùng cố gắng vì phiên bản tốt hơn mỗi ngày nhé!',
+                      style: TextStyle(fontSize: 10, color: ecoMuted),
+                    ),
+                  ],
+                ),
+              ),
+              CircleAvatar(
+                radius: 22,
+                backgroundColor: Color(0xFFB4D4A9),
+                child: Text(
+                  appState.initials,
+                  style: const TextStyle(
+                    color: ecoText,
+                    fontWeight: FontWeight.w800,
                   ),
-                ],
+                ),
               ),
             ],
           ),
-        ),
-        gap12,
-        const Row(
-          children: [
-            Expanded(
-              child: StatCard(
-                icon: Icons.local_fire_department_outlined,
-                label: 'BMR',
-                value: '1.520 kcal',
-                sub: 'Năng lượng cơ bản',
-                color: Color(0xFFFFF7E8),
-              ),
+          gap16,
+          EcoCard(
+            child: Column(
+              children: [
+                SectionTitle(
+                  'Mục tiêu hôm nay',
+                  action: 'Xem chi tiết ›',
+                  onTap: () => Navigator.pushNamed(context, AppRoutes.metrics),
+                ),
+                Row(
+                  children: const [
+                    MacroRing(),
+                    SizedBox(width: 20),
+                    Expanded(
+                      child: MacroLegend(
+                        values: [
+                          (Color(0xFFE66B58), 'Protein', '72 / 120g'),
+                          (Color(0xFFF1A63E), 'Carb', '130 / 250g'),
+                          (Color(0xFF5C92DE), 'Fat', '40 / 70g'),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
-            SizedBox(width: 10),
-            Expanded(
-              child: StatCard(
-                icon: Icons.bar_chart,
-                label: 'TDEE',
-                value: '2.050 kcal',
-                sub: 'Năng lượng duy trì',
-                color: Color(0xFFEEF8F1),
+          ),
+          gap12,
+          Row(
+            children: [
+              Expanded(
+                child: StatCard(
+                  icon: Icons.local_fire_department_outlined,
+                  label: 'BMR',
+                  value: '${metrics.bmr} kcal',
+                  sub: 'Năng lượng cơ bản',
+                  color: Color(0xFFFFF7E8),
+                ),
               ),
+              SizedBox(width: 10),
+              Expanded(
+                child: StatCard(
+                  icon: Icons.bar_chart,
+                  label: 'TDEE',
+                  value: '${metrics.tdee} kcal',
+                  sub: 'Năng lượng duy trì',
+                  color: Color(0xFFEEF8F1),
+                ),
+              ),
+            ],
+          ),
+          gap16,
+          SectionTitle(
+            'Bài tập tiếp theo',
+            action: 'Xem lịch ›',
+            onTap: () => Navigator.pushNamed(context, AppRoutes.workouts),
+          ),
+          _ActionCard(
+            icon: Icons.fitness_center,
+            title: 'Push - Ngực & Tay sau',
+            subtitle: 'Hôm nay · 17:00 · 45 phút',
+            label: 'Bắt đầu',
+            onTap: () => Navigator.pushNamed(context, AppRoutes.exercise),
+          ),
+          gap16,
+          SectionTitle(
+            'Gợi ý bữa ăn hôm nay',
+            action: 'Xem thực đơn ›',
+            onTap: () => Navigator.pushNamed(context, AppRoutes.meals),
+          ),
+          _ActionCard(
+            emoji: '🍱',
+            title: meals[1].name,
+            subtitle: '520 kcal · P 35g · C 65g · F 12g',
+            onTap: () => Navigator.pushNamed(
+              context,
+              AppRoutes.mealDetail('chicken-rice'),
             ),
-          ],
-        ),
-        gap16,
-        SectionTitle(
-          'Bài tập tiếp theo',
-          action: 'Xem lịch ›',
-          onTap: () => Navigator.pushNamed(context, '/workouts'),
-        ),
-        _ActionCard(
-          icon: Icons.fitness_center,
-          title: 'Push - Ngực & Tay sau',
-          subtitle: 'Hôm nay · 17:00 · 45 phút',
-          label: 'Bắt đầu',
-          onTap: () => Navigator.pushNamed(context, '/exercise'),
-        ),
-        gap16,
-        SectionTitle(
-          'Gợi ý bữa ăn hôm nay',
-          action: 'Xem thực đơn ›',
-          onTap: () => Navigator.pushNamed(context, '/meals'),
-        ),
-        _ActionCard(
-          emoji: '🍱',
-          title: meals[1].name,
-          subtitle: '520 kcal · P 35g · C 65g · F 12g',
-          onTap: () => Navigator.pushNamed(context, '/meal/chicken-rice'),
-        ),
-        gap16,
-        const QuoteCard(
-          '🌱 “Cơ thể khỏe mạnh là nền tảng cho những ước mơ lớn.”',
-        ),
-      ],
-    ),
-  );
+          ),
+          gap16,
+          const QuoteCard(
+            '🌱 “Cơ thể khỏe mạnh là nền tảng cho những ước mơ lớn.”',
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _ActionCard extends StatelessWidget {
@@ -767,7 +780,8 @@ class _MealsScreenState extends State<MealsScreen> {
           (m) => Padding(
             padding: const EdgeInsets.only(bottom: 9),
             child: InkWell(
-              onTap: () => Navigator.pushNamed(context, '/meal/${m.id}'),
+              onTap: () =>
+                  Navigator.pushNamed(context, AppRoutes.mealDetail(m.id)),
               child: EcoCard(
                 padding: const EdgeInsets.all(10),
                 child: Row(
@@ -837,7 +851,7 @@ class _MealsScreenState extends State<MealsScreen> {
           ),
         ),
         OutlinedButton.icon(
-          onPressed: () => Navigator.pushNamed(context, '/grocery'),
+          onPressed: () => Navigator.pushNamed(context, AppRoutes.grocery),
           icon: const Icon(Icons.shopping_cart_outlined),
           label: const Text('Xem danh sách mua sắm'),
         ),
@@ -1291,7 +1305,7 @@ class _WorkoutsScreenState extends State<WorkoutsScreen> {
             child: InkWell(
               onTap: () {
                 _toast(context, 'Đã chọn ${w.$2}');
-                Navigator.pushNamed(context, '/exercise');
+                Navigator.pushNamed(context, AppRoutes.exercise);
               },
               child: EcoCard(
                 color: i == 0 ? const Color(0xFFEDF7EA) : Colors.white,
@@ -1669,9 +1683,22 @@ class BodyMetricsScreen extends StatefulWidget {
 }
 
 class _BodyMetricsScreenState extends State<BodyMetricsScreen> {
-  int age = 20;
-  String gender = 'male', goal = 'lose';
-  double height = 170, weight = 65, activity = 1.375;
+  late int age;
+  late String gender, goal;
+  late double height, weight, activity;
+
+  @override
+  void initState() {
+    super.initState();
+    final appState = EcoFitAppState.instance;
+    age = appState.age;
+    gender = appState.gender;
+    height = appState.height;
+    weight = appState.weight;
+    activity = appState.activity;
+    goal = appState.goal;
+  }
+
   @override
   Widget build(BuildContext context) {
     final m = calculateMetrics(
@@ -1755,9 +1782,17 @@ class _BodyMetricsScreenState extends State<BodyMetricsScreen> {
           }, (v) => setState(() => goal = v)),
           gap12,
           FilledButton(
-            onPressed: () {
-              setState(() {});
-              _toast(context, 'Đã tính lại chỉ số cơ thể');
+            onPressed: () async {
+              await EcoFitAppState.instance.updateMetrics(
+                age: age,
+                gender: gender,
+                height: height,
+                weight: weight,
+                activity: activity,
+                goal: goal,
+              );
+              if (!context.mounted) return;
+              _toast(context, 'Đã lưu và tính lại chỉ số cơ thể');
             },
             child: const Text('Tính chỉ số của tôi'),
           ),
@@ -2271,50 +2306,27 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   bool reminders = true;
+
+  Future<void> _editProfile() async {
+    final appState = EcoFitAppState.instance;
+    final saved = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => _ProfileEditorSheet(appState: appState),
+    );
+
+    if (!mounted || saved != true) return;
+    setState(() {});
+    _toast(context, 'Đã lưu thay đổi hồ sơ');
+  }
+
   @override
   Widget build(BuildContext context) => EcoShell(
     title: 'Cá nhân',
     selected: 4,
     actions: [
       TextButton(
-        onPressed: () => showModalBottomSheet<void>(
-          context: context,
-          isScrollControlled: true,
-          builder: (sheetContext) => Padding(
-            padding: EdgeInsets.fromLTRB(
-              24,
-              24,
-              24,
-              MediaQuery.viewInsetsOf(sheetContext).bottom + 24,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  'Chỉnh sửa hồ sơ',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-                ),
-                gap16,
-                const TextField(
-                  decoration: InputDecoration(labelText: 'Họ tên'),
-                  controller: null,
-                ),
-                gap12,
-                const TextField(
-                  decoration: InputDecoration(labelText: 'Trường học'),
-                ),
-                gap16,
-                FilledButton(
-                  onPressed: () {
-                    Navigator.pop(sheetContext);
-                    _toast(context, 'Đã lưu thay đổi hồ sơ');
-                  },
-                  child: const Text('Lưu thay đổi'),
-                ),
-              ],
-            ),
-          ),
-        ),
+        onPressed: _editProfile,
         child: const Text(
           'Chỉnh sửa',
           style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800),
@@ -2324,14 +2336,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
     child: ListView(
       padding: pagePadding,
       children: [
-        const Row(
+        Row(
           children: [
             CircleAvatar(
               radius: 32,
               backgroundColor: Color(0xFFB4D4A9),
               child: Text(
-                'MA',
-                style: TextStyle(
+                EcoFitAppState.instance.initials,
+                style: const TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w800,
                   color: ecoText,
@@ -2343,14 +2355,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Minh Anh',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                  EcoFitAppState.instance.name,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
                 Text(
-                  'Sinh viên Đại học Kinh tế',
-                  style: TextStyle(fontSize: 9),
+                  'Sinh viên ${EcoFitAppState.instance.school}',
+                  style: const TextStyle(fontSize: 9),
                 ),
-                Text(
+                const Text(
                   'Sống khỏe hơn mỗi ngày 🌱',
                   style: TextStyle(fontSize: 8, color: ecoMuted),
                 ),
@@ -2421,7 +2436,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               _Setting(
                 Icons.smart_toy_outlined,
                 'AI Coach',
-                onTap: () => Navigator.pushNamed(context, '/coach'),
+                onTap: () => Navigator.pushNamed(context, AppRoutes.coach),
               ),
               const _Setting(Icons.help_outline, 'Trợ giúp & Phản hồi'),
               const _Setting(Icons.info_outline, 'Giới thiệu về Eco Fit'),
@@ -2432,7 +2447,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         FilledButton.tonalIcon(
           onPressed: () => Navigator.pushNamedAndRemoveUntil(
             context,
-            '/login',
+            AppRoutes.login,
             (_) => false,
           ),
           style: FilledButton.styleFrom(
@@ -2442,6 +2457,82 @@ class _ProfileScreenState extends State<ProfileScreen> {
           icon: const Icon(Icons.logout),
           label: const Text('Đăng xuất'),
         ),
+      ],
+    ),
+  );
+}
+
+class _ProfileEditorSheet extends StatefulWidget {
+  const _ProfileEditorSheet({required this.appState});
+
+  final EcoFitAppState appState;
+
+  @override
+  State<_ProfileEditorSheet> createState() => _ProfileEditorSheetState();
+}
+
+class _ProfileEditorSheetState extends State<_ProfileEditorSheet> {
+  late final TextEditingController _nameController;
+  late final TextEditingController _schoolController;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController = TextEditingController(text: widget.appState.name);
+    _schoolController = TextEditingController(text: widget.appState.school);
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _schoolController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (_nameController.text.trim().isEmpty ||
+        _schoolController.text.trim().isEmpty) {
+      _toast(context, 'Vui lòng nhập đủ họ tên và trường học');
+      return;
+    }
+    await widget.appState.updateProfile(
+      name: _nameController.text,
+      school: _schoolController.text,
+    );
+    if (!mounted) return;
+    Navigator.pop(context, true);
+  }
+
+  @override
+  Widget build(BuildContext context) => SingleChildScrollView(
+    padding: EdgeInsets.fromLTRB(
+      24,
+      24,
+      24,
+      MediaQuery.viewInsetsOf(context).bottom + 24,
+    ),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Text(
+          'Chỉnh sửa hồ sơ',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+        ),
+        gap16,
+        TextField(
+          controller: _nameController,
+          textInputAction: TextInputAction.next,
+          decoration: const InputDecoration(labelText: 'Họ tên'),
+        ),
+        gap12,
+        TextField(
+          controller: _schoolController,
+          textInputAction: TextInputAction.done,
+          onSubmitted: (_) => _save(),
+          decoration: const InputDecoration(labelText: 'Trường học'),
+        ),
+        gap16,
+        FilledButton(onPressed: _save, child: const Text('Lưu thay đổi')),
       ],
     ),
   );

@@ -13,11 +13,13 @@ Chọn thiết bị Android, iOS, Windows hoặc trình duyệt từ danh sách 
 
 ## Cấu trúc chính
 
-- `lib/main.dart`: khởi tạo app và routes
-- `lib/screens.dart`: 15 màn hình và state tương tác
-- `lib/widgets.dart`: các widget dùng chung
-- `lib/data.dart`: dữ liệu mẫu và phép tính BMI/BMR/TDEE
-- `lib/theme.dart`: màu sắc, typography và Material 3 theme
+- `lib/app`: app root và router tập trung
+- `lib/core`: theme và nền tảng dùng chung
+- `lib/domain`: model và nghiệp vụ thuần Dart
+- `lib/data`: mock data, sau này thay bằng repository/API
+- `lib/features`: public API theo từng feature
+- `lib/shared`: widget dùng chung
+- `docs/architecture.md`: quy tắc kiến trúc và phụ thuộc
 
 ## Màn hình
 

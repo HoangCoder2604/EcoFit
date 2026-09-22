@@ -1,11 +1,11 @@
 {
-    "name": "eco_fit",
-    "short_name": "eco_fit",
+    "name": "Eco Fit",
+    "short_name": "Eco Fit",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#FBFAF4",
+    "theme_color": "#28783A",
+    "description": "Eco Fit - dinh dưỡng và tập luyện lành mạnh.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

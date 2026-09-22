@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'app/router/app_routes.dart';
 import 'theme.dart';
 
 class EcoShell extends StatelessWidget {
@@ -17,11 +18,11 @@ class EcoShell extends StatelessWidget {
   final bool showNav;
   final List<Widget>? actions;
   static const routes = [
-    '/home',
-    '/meals',
-    '/workouts',
-    '/progress',
-    '/profile',
+    AppRoutes.home,
+    AppRoutes.meals,
+    AppRoutes.workouts,
+    AppRoutes.progress,
+    AppRoutes.profile,
   ];
 
   @override
@@ -298,14 +299,14 @@ class EcoCard extends StatelessWidget {
   final EdgeInsets padding;
   final Color color;
   @override
-  Widget build(BuildContext context) => Container(
-    padding: padding,
-    decoration: BoxDecoration(
-      color: color,
+  Widget build(BuildContext context) => Material(
+    color: color,
+    clipBehavior: Clip.antiAlias,
+    shape: RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(18),
-      border: Border.all(color: ecoLine),
+      side: const BorderSide(color: ecoLine),
     ),
-    child: child,
+    child: Padding(padding: padding, child: child),
   );
 }
 

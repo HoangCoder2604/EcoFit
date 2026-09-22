@@ -1,0 +1,10 @@
+export 'auth/auth.dart';
+export 'check_in/check_in.dart';
+export 'coach/coach.dart';
+export 'dashboard/dashboard.dart';
+export 'health/health.dart';
+export 'nutrition/nutrition.dart';
+export 'onboarding/onboarding.dart';
+export 'profile/profile.dart';
+export 'progress/progress.dart';
+export 'training/training.dart';
