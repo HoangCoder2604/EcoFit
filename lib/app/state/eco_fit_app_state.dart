@@ -22,6 +22,12 @@ class EcoFitAppState extends ChangeNotifier {
   double weight = 65;
   double activity = 1.375;
   String goal = 'lose';
+  bool dailyReminders = true;
+  bool mealReminder = true;
+  bool workoutReminder = true;
+  bool weeklyReport = false;
+  String language = 'vi';
+  String appearance = 'system';
 
   bool _loaded = false;
 
@@ -57,12 +63,74 @@ class EcoFitAppState extends ChangeNotifier {
       weight = preferences.getDouble('metrics.weight') ?? weight;
       activity = preferences.getDouble('metrics.activity') ?? activity;
       goal = preferences.getString('metrics.goal') ?? goal;
+      dailyReminders =
+          preferences.getBool('settings.dailyReminders') ?? dailyReminders;
+      mealReminder =
+          preferences.getBool('settings.mealReminder') ?? mealReminder;
+      workoutReminder =
+          preferences.getBool('settings.workoutReminder') ?? workoutReminder;
+      weeklyReport =
+          preferences.getBool('settings.weeklyReport') ?? weeklyReport;
+      language = preferences.getString('settings.language') ?? language;
+      appearance = preferences.getString('settings.appearance') ?? appearance;
     } catch (error) {
       debugPrint('Không thể đọc dữ liệu Eco Fit đã lưu: $error');
     } finally {
       _loaded = true;
       notifyListeners();
     }
+  }
+
+  Future<void> updateDailyReminders(bool value) async {
+    dailyReminders = value;
+    notifyListeners();
+    final preferences = await _prefs;
+    await preferences.setBool('settings.dailyReminders', value);
+  }
+
+  Future<void> updateNotifications({
+    required bool meal,
+    required bool workout,
+    required bool weekly,
+  }) async {
+    mealReminder = meal;
+    workoutReminder = workout;
+    weeklyReport = weekly;
+    notifyListeners();
+    final preferences = await _prefs;
+    await Future.wait([
+      preferences.setBool('settings.mealReminder', meal),
+      preferences.setBool('settings.workoutReminder', workout),
+      preferences.setBool('settings.weeklyReport', weekly),
+    ]);
+  }
+
+  Future<void> updateLanguage(String value) async {
+    language = value;
+    notifyListeners();
+    final preferences = await _prefs;
+    await preferences.setString('settings.language', value);
+  }
+
+  Future<void> updateAppearance(String value) async {
+    appearance = value;
+    notifyListeners();
+    final preferences = await _prefs;
+    await preferences.setString('settings.appearance', value);
+  }
+
+  @visibleForTesting
+  void resetForTesting() {
+    _preferences = null;
+    _loaded = false;
+    name = 'Minh Anh';
+    school = 'Đại học Kinh tế';
+    dailyReminders = true;
+    mealReminder = true;
+    workoutReminder = true;
+    weeklyReport = false;
+    language = 'vi';
+    appearance = 'system';
   }
 
   Future<void> updateProfile({

@@ -1,1 +1,2 @@
-export '../../screens.dart' show ExerciseDetailScreen, WorkoutsScreen;
+export '../../screens.dart'
+    show ExerciseDetailScreen, WorkoutsScreen, WorkoutSessionScreen;

@@ -17,7 +17,7 @@ void main() {
     });
 
     test('danh sách route tĩnh không trùng nhau', () {
-      expect(AppRoutes.knownRoutes.length, 14);
+      expect(AppRoutes.knownRoutes.length, 21);
     });
   });
 }

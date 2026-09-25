@@ -30,6 +30,14 @@ class AppRouter {
       AppRoutes.checkIn => const CheckInScreen(),
       AppRoutes.coach => const AiCoachScreen(),
       AppRoutes.profile => const ProfileScreen(),
+      AppRoutes.workoutSession => const WorkoutSessionScreen(),
+      AppRoutes.accountSettings => const SettingsDetailScreen.account(),
+      AppRoutes.notificationSettings =>
+        const SettingsDetailScreen.notifications(),
+      AppRoutes.languageSettings => const SettingsDetailScreen.language(),
+      AppRoutes.appearanceSettings => const SettingsDetailScreen.appearance(),
+      AppRoutes.help => const SettingsDetailScreen.help(),
+      AppRoutes.about => const SettingsDetailScreen.about(),
       _ => const _UnknownRouteScreen(),
     };
 

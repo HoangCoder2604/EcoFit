@@ -1,7 +1,22 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'app/router/app_routes.dart';
+import 'app/state/eco_fit_app_state.dart';
 import 'theme.dart';
+
+enum EcoShellLayout { desktopSidebar, mobileWebDrawer, nativeBottomBar, plain }
+
+EcoShellLayout ecoShellLayoutFor({
+  required bool isWeb,
+  required double width,
+  required bool showNav,
+}) {
+  if (!showNav) return EcoShellLayout.plain;
+  if (width >= 980) return EcoShellLayout.desktopSidebar;
+  if (isWeb) return EcoShellLayout.mobileWebDrawer;
+  return EcoShellLayout.nativeBottomBar;
+}
 
 class EcoShell extends StatelessWidget {
   const EcoShell({
@@ -26,56 +41,357 @@ class EcoShell extends StatelessWidget {
   ];
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: title == null
-        ? null
-        : AppBar(title: Text(title!), actions: actions),
-    body: SafeArea(child: child),
-    bottomNavigationBar: showNav
-        ? NavigationBar(
-            height: 68,
-            selectedIndex: selected,
-            indicatorColor: ecoGreenSoft,
-            labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-            onDestinationSelected: (i) {
-              if (i != selected)
-                Navigator.pushReplacementNamed(context, routes[i]);
-            },
-            destinations: const [
-              NavigationDestination(
-                icon: Icon(Icons.home_outlined),
-                selectedIcon: Icon(Icons.home),
-                label: 'Trang chủ',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.restaurant_outlined),
-                selectedIcon: Icon(Icons.restaurant),
-                label: 'Bữa ăn',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.fitness_center_outlined),
-                selectedIcon: Icon(Icons.fitness_center),
-                label: 'Tập luyện',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.bar_chart_outlined),
-                selectedIcon: Icon(Icons.bar_chart),
-                label: 'Tiến độ',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.person_outline),
-                selectedIcon: Icon(Icons.person),
-                label: 'Cá nhân',
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final layout = ecoShellLayoutFor(
+        isWeb: kIsWeb,
+        width: constraints.maxWidth,
+        showNav: showNav,
+      );
+      final english = EcoFitAppState.instance.language == 'en';
+      final content = SafeArea(
+        child: Align(
+          alignment: Alignment.topCenter,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: layout == EcoShellLayout.mobileWebDrawer ? 760 : 1440,
+            ),
+            child: child,
+          ),
+        ),
+      );
+      if (layout == EcoShellLayout.desktopSidebar) {
+        return Scaffold(
+          body: Row(
+            children: [
+              _EcoSidebar(selected: selected, routes: routes),
+              Expanded(
+                child: Column(
+                  children: [
+                    _DesktopHeader(title: title, actions: actions),
+                    Expanded(child: content),
+                  ],
+                ),
               ),
             ],
-          )
-        : null,
+          ),
+        );
+      }
+      if (layout == EcoShellLayout.mobileWebDrawer) {
+        return Scaffold(
+          appBar: AppBar(
+            toolbarHeight: 64,
+            leading: Builder(
+              builder: (menuContext) => IconButton(
+                tooltip: english ? 'Open menu' : 'Mở menu',
+                onPressed: () => Scaffold.of(menuContext).openDrawer(),
+                icon: const Icon(Icons.menu_rounded),
+              ),
+            ),
+            title: title == null
+                ? const EcoLogo()
+                : Text(title!, overflow: TextOverflow.ellipsis),
+            actions: actions,
+          ),
+          drawer: _MobileWebDrawer(
+            selected: selected,
+            routes: routes,
+            english: english,
+          ),
+          body: content,
+        );
+      }
+      return Scaffold(
+        appBar: title == null
+            ? null
+            : AppBar(title: Text(title!), actions: actions),
+        body: content,
+        bottomNavigationBar: layout == EcoShellLayout.nativeBottomBar
+            ? NavigationBar(
+                height: 68,
+                selectedIndex: selected,
+                indicatorColor: Theme.of(context).colorScheme.primaryContainer,
+                labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+                onDestinationSelected: (i) {
+                  if (i != selected)
+                    Navigator.pushReplacementNamed(context, routes[i]);
+                },
+                destinations: [
+                  NavigationDestination(
+                    icon: const Icon(Icons.home_outlined),
+                    selectedIcon: const Icon(Icons.home),
+                    label: english ? 'Home' : 'Trang chủ',
+                  ),
+                  NavigationDestination(
+                    icon: const Icon(Icons.restaurant_outlined),
+                    selectedIcon: const Icon(Icons.restaurant),
+                    label: english ? 'Meals' : 'Bữa ăn',
+                  ),
+                  NavigationDestination(
+                    icon: const Icon(Icons.fitness_center_outlined),
+                    selectedIcon: const Icon(Icons.fitness_center),
+                    label: english ? 'Workout' : 'Tập luyện',
+                  ),
+                  NavigationDestination(
+                    icon: const Icon(Icons.bar_chart_outlined),
+                    selectedIcon: const Icon(Icons.bar_chart),
+                    label: english ? 'Progress' : 'Tiến độ',
+                  ),
+                  NavigationDestination(
+                    icon: const Icon(Icons.person_outline),
+                    selectedIcon: const Icon(Icons.person),
+                    label: english ? 'Profile' : 'Cá nhân',
+                  ),
+                ],
+              )
+            : null,
+      );
+    },
   );
 }
 
+class _MobileWebDrawer extends StatelessWidget {
+  const _MobileWebDrawer({
+    required this.selected,
+    required this.routes,
+    required this.english,
+  });
+
+  final int selected;
+  final List<String> routes;
+  final bool english;
+
+  @override
+  Widget build(BuildContext context) {
+    final items = <(IconData, String)>[
+      (Icons.space_dashboard_outlined, english ? 'Overview' : 'Tổng quan'),
+      (Icons.restaurant_menu_outlined, english ? 'Meals' : 'Bữa ăn'),
+      (Icons.fitness_center_outlined, english ? 'Workout' : 'Tập luyện'),
+      (Icons.monitor_heart_outlined, english ? 'Progress' : 'Tiến độ'),
+      (Icons.person_outline, english ? 'Profile' : 'Cá nhân'),
+    ];
+    return Drawer(
+      width: 310,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 22, 18, 18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  const EcoLogo(),
+                  const Spacer(),
+                  IconButton(
+                    tooltip: english ? 'Close menu' : 'Đóng menu',
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 26),
+              Text(
+                english ? 'YOUR SPACE' : 'KHÔNG GIAN CỦA BẠN',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontSize: 10,
+                  letterSpacing: 1.1,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 10),
+              for (var i = 0; i < items.length; i++)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 5),
+                  child: ListTile(
+                    selected: i == selected,
+                    selectedColor: Theme.of(context).colorScheme.primary,
+                    selectedTileColor: Theme.of(context)
+                        .colorScheme
+                        .primaryContainer,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    leading: Icon(items[i].$1),
+                    title: Text(
+                      items[i].$2,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    onTap: () {
+                      Navigator.pop(context);
+                      if (i != selected) {
+                        Navigator.pushReplacementNamed(context, routes[i]);
+                      }
+                    },
+                  ),
+                ),
+              const Spacer(),
+              OutlinedButton.icon(
+                onPressed: () =>
+                    Navigator.pushNamed(context, AppRoutes.checkIn),
+                icon: const Icon(Icons.add_task_rounded),
+                label: Text(english ? 'Daily check-in' : 'Check-in hôm nay'),
+              ),
+              const SizedBox(height: 8),
+              TextButton.icon(
+                onPressed: () => Navigator.pushNamed(context, AppRoutes.coach),
+                icon: const Icon(Icons.chat_bubble_outline),
+                label: Text(english ? 'Ask Eco Coach' : 'Hỏi Eco Coach'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DesktopHeader extends StatelessWidget {
+  const _DesktopHeader({this.title, this.actions});
+  final String? title;
+  final List<Widget>? actions;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    height: 76,
+    padding: const EdgeInsets.symmetric(horizontal: 32),
+    decoration: BoxDecoration(
+      color: Theme.of(context).colorScheme.surface,
+      border: Border(bottom: BorderSide(color: Theme.of(context).dividerColor)),
+    ),
+    child: Row(
+      children: [
+        Text(
+          title ?? 'Tổng quan hôm nay',
+          style: Theme.of(context).textTheme.titleLarge,
+        ),
+        const Spacer(),
+        if (actions != null) ...actions!,
+        IconButton(
+          tooltip: 'Thông báo',
+          onPressed: () => Navigator.pushNamed(context, AppRoutes.profile),
+          icon: const Badge(child: Icon(Icons.notifications_none_rounded)),
+        ),
+        const SizedBox(width: 8),
+        CircleAvatar(
+          radius: 18,
+          backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+          child: Icon(
+            Icons.person_outline,
+            color: Theme.of(context).colorScheme.primary,
+            size: 20,
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+class _EcoSidebar extends StatelessWidget {
+  const _EcoSidebar({required this.selected, required this.routes});
+  final int selected;
+  final List<String> routes;
+
+  @override
+  Widget build(BuildContext context) {
+    final english = EcoFitAppState.instance.language == 'en';
+    final items = <(IconData, String)>[
+      (Icons.space_dashboard_outlined, english ? 'Dashboard' : 'Tổng quan'),
+      (Icons.restaurant_menu_outlined, english ? 'Meals' : 'Bữa ăn'),
+      (Icons.fitness_center_outlined, english ? 'Workout' : 'Tập luyện'),
+      (Icons.monitor_heart_outlined, english ? 'Progress' : 'Tiến độ'),
+      (Icons.person_outline, english ? 'Profile' : 'Cá nhân'),
+    ];
+    return Container(
+      width: 248,
+      color: ecoText,
+      padding: const EdgeInsets.fromLTRB(20, 26, 20, 22),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const EcoLogo(onDark: true),
+          const SizedBox(height: 34),
+          const Padding(
+            padding: EdgeInsets.only(left: 12, bottom: 10),
+            child: Text(
+              'KHÔNG GIAN CỦA BẠN',
+              style: TextStyle(
+                color: Color(0xFF9FB0A7),
+                fontSize: 10,
+                letterSpacing: 1.2,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          for (var i = 0; i < items.length; i++)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Material(
+                color: Colors.transparent,
+                child: ListTile(
+                  selected: i == selected,
+                  selectedTileColor: const Color(0xFF335F4B),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  leading: Icon(
+                    items[i].$1,
+                    color: i == selected
+                        ? Colors.white
+                        : const Color(0xFFB9C6BF),
+                  ),
+                  title: Text(
+                    items[i].$2,
+                    style: TextStyle(
+                      color: i == selected
+                          ? Colors.white
+                          : const Color(0xFFD4DED8),
+                      fontWeight: i == selected
+                          ? FontWeight.w700
+                          : FontWeight.w500,
+                    ),
+                  ),
+                  onTap: () {
+                    if (i != selected) {
+                      Navigator.pushReplacementNamed(context, routes[i]);
+                    }
+                  },
+                ),
+              ),
+            ),
+          const Spacer(),
+          OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.white,
+              side: const BorderSide(color: Color(0xFF496D5C)),
+            ),
+            onPressed: () => Navigator.pushNamed(context, AppRoutes.checkIn),
+            icon: const Icon(Icons.add_task_rounded),
+            label: const Text('Check-in hôm nay'),
+          ),
+          const SizedBox(height: 8),
+          TextButton.icon(
+            onPressed: () => Navigator.pushNamed(context, AppRoutes.coach),
+            icon: const Icon(
+              Icons.chat_bubble_outline,
+              color: Color(0xFFB9C6BF),
+            ),
+            label: const Text(
+              'Hỏi Eco Coach',
+              style: TextStyle(color: Color(0xFFD4DED8)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class EcoLogo extends StatelessWidget {
-  const EcoLogo({super.key, this.large = false});
+  const EcoLogo({super.key, this.large = false, this.onDark = false});
   final bool large;
+  final bool onDark;
   @override
   Widget build(BuildContext context) => Row(
     mainAxisSize: MainAxisSize.min,
@@ -84,7 +400,7 @@ class EcoLogo extends StatelessWidget {
         width: large ? 58 : 40,
         height: large ? 58 : 40,
         decoration: BoxDecoration(
-          color: ecoGreen,
+          color: Theme.of(context).colorScheme.primary,
           borderRadius: BorderRadius.circular(large ? 20 : 14),
         ),
         child: Icon(Icons.eco, color: Colors.white, size: large ? 34 : 22),
@@ -99,12 +415,21 @@ class EcoLogo extends StatelessWidget {
             style: TextStyle(
               fontSize: large ? 34 : 19,
               fontWeight: FontWeight.w900,
+              color: onDark
+                  ? Colors.white
+                  : Theme.of(context).colorScheme.onSurface,
             ),
           ),
           if (!large)
-            const Text(
-              'HEALTHY STUDENT LIFE',
-              style: TextStyle(fontSize: 8, letterSpacing: 1, color: ecoMuted),
+            Text(
+              'SỐNG KHỎE MỖI NGÀY',
+              style: TextStyle(
+                fontSize: 7,
+                letterSpacing: .6,
+                color: onDark
+                    ? const Color(0xFFB9C6BF)
+                    : Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
         ],
       ),
@@ -128,16 +453,15 @@ class SectionTitle extends StatelessWidget {
             style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
           ),
         ),
-        if (action != null)
+        if (action != null && onTap != null)
           InkWell(
-            onTap:
-                onTap ??
-                () =>
-                    ScaffoldMessenger.of(context)
-                        .showSnackBar(SnackBar(content: Text(action!))),
+            onTap: onTap,
             child: Text(
               action!,
-              style: const TextStyle(fontSize: 10, color: ecoMuted),
+              style: TextStyle(
+                fontSize: 10,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
           ),
       ],
@@ -164,8 +488,8 @@ class MacroRing extends StatelessWidget {
         CircularProgressIndicator(
           value: value,
           strokeWidth: 13,
-          color: ecoGreen,
-          backgroundColor: const Color(0xFFEEF1EC),
+          color: Theme.of(context).colorScheme.primary,
+          backgroundColor: Theme.of(context).dividerColor,
           strokeCap: StrokeCap.round,
         ),
         Center(
@@ -179,7 +503,13 @@ class MacroRing extends StatelessWidget {
                   fontWeight: FontWeight.w800,
                 ),
               ),
-              Text(total, style: const TextStyle(fontSize: 8, color: ecoMuted)),
+              Text(
+                total,
+                style: TextStyle(
+                  fontSize: 8,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
             ],
           ),
         ),
@@ -220,7 +550,10 @@ class MacroLegend extends StatelessWidget {
                 ),
                 Text(
                   e.$3,
-                  style: const TextStyle(fontSize: 9, color: ecoMuted),
+                  style: TextStyle(
+                    fontSize: 9,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ],
             ),
@@ -237,55 +570,75 @@ class StatCard extends StatelessWidget {
     required this.label,
     required this.value,
     required this.sub,
-    this.color = Colors.white,
+    this.color,
   });
   final IconData icon;
   final String label, value, sub;
-  final Color color;
+  final Color? color;
   @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.all(11),
-    decoration: BoxDecoration(
-      color: color,
-      borderRadius: BorderRadius.circular(16),
-      border: Border.all(color: ecoLine),
-    ),
-    child: Row(
-      children: [
-        Container(
-          width: 35,
-          height: 35,
-          decoration: BoxDecoration(
-            color: Colors.white70,
-            borderRadius: BorderRadius.circular(11),
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final dark = theme.brightness == Brightness.dark;
+    final background = dark
+        ? switch (label) {
+            'BMR' => const Color(0xFF332714),
+            'TDEE' => const Color(0xFF173623),
+            _ => theme.colorScheme.surface,
+          }
+        : color ?? theme.colorScheme.surface;
+    return Container(
+      padding: const EdgeInsets.all(11),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Theme.of(context).dividerColor),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 35,
+            height: 35,
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(11),
+            ),
+            child: Icon(icon, size: 19, color: theme.colorScheme.primary),
           ),
-          child: Icon(icon, size: 19, color: ecoGreen),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(label, style: const TextStyle(fontSize: 8, color: ecoMuted)),
-              Text(
-                value,
-                maxLines: 1,
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 8,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
-              ),
-              Text(
-                sub,
-                maxLines: 2,
-                style: const TextStyle(fontSize: 8, color: ecoMuted),
-              ),
-            ],
+                Text(
+                  value,
+                  maxLines: 1,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                Text(
+                  sub,
+                  maxLines: 2,
+                  style: TextStyle(
+                    fontSize: 8,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-      ],
-    ),
-  );
+        ],
+      ),
+    );
+  }
 }
 
 class EcoCard extends StatelessWidget {
@@ -293,18 +646,18 @@ class EcoCard extends StatelessWidget {
     super.key,
     required this.child,
     this.padding = const EdgeInsets.all(15),
-    this.color = Colors.white,
+    this.color,
   });
   final Widget child;
   final EdgeInsets padding;
-  final Color color;
+  final Color? color;
   @override
   Widget build(BuildContext context) => Material(
-    color: color,
+    color: color ?? Theme.of(context).colorScheme.surface,
     clipBehavior: Clip.antiAlias,
     shape: RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(18),
-      side: const BorderSide(color: ecoLine),
+      side: BorderSide(color: Theme.of(context).dividerColor),
     ),
     child: Padding(padding: padding, child: child),
   );
@@ -324,7 +677,7 @@ class SegmentedTabs extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.all(3),
     decoration: BoxDecoration(
-      color: const Color(0xFFEEF1EC),
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
       borderRadius: BorderRadius.circular(99),
     ),
     child: Row(
@@ -337,7 +690,9 @@ class SegmentedTabs extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(vertical: 8),
               decoration: BoxDecoration(
-                color: i == selected ? ecoGreen : Colors.transparent,
+                color: i == selected
+                    ? Theme.of(context).colorScheme.primary
+                    : Colors.transparent,
                 borderRadius: BorderRadius.circular(99),
               ),
               child: Text(
@@ -346,7 +701,9 @@ class SegmentedTabs extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 9,
                   fontWeight: FontWeight.w700,
-                  color: i == selected ? Colors.white : ecoMuted,
+                  color: i == selected
+                      ? Colors.white
+                      : Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
               ),
             ),
@@ -358,59 +715,92 @@ class SegmentedTabs extends StatelessWidget {
 }
 
 class DateStrip extends StatefulWidget {
-  const DateStrip({super.key, this.active = 2});
-  final int active;
+  const DateStrip({super.key, this.weekOf, this.selectedDate, this.onSelected});
+
+  final DateTime? weekOf;
+  final DateTime? selectedDate;
+  final ValueChanged<DateTime>? onSelected;
 
   @override
   State<DateStrip> createState() => _DateStripState();
 }
 
 class _DateStripState extends State<DateStrip> {
-  late int active;
+  late DateTime selectedDate;
 
   @override
   void initState() {
     super.initState();
-    active = widget.active;
+    final initial = widget.selectedDate ?? DateTime.now();
+    selectedDate = DateTime(initial.year, initial.month, initial.day);
   }
 
   @override
-  Widget build(BuildContext context) => Row(
-    children: List.generate(7, (i) {
-      const days = [
-        'T2\n8',
-        'T3\n9',
-        'T4\n10',
-        'T5\n11',
-        'T6\n12',
-        'T7\n13',
-        'CN\n14',
-      ];
-      return Expanded(
-        child: InkWell(
-          borderRadius: BorderRadius.circular(10),
-          onTap: () => setState(() => active = i),
-          child: Container(
-            margin: const EdgeInsets.symmetric(horizontal: 2),
-            padding: const EdgeInsets.symmetric(vertical: 7),
-            decoration: BoxDecoration(
-              color: i == active ? ecoGreen : const Color(0xFFF1F4EF),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Text(
-              days[i],
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 8,
-                fontWeight: FontWeight.w700,
-                color: i == active ? Colors.white : ecoMuted,
+  void didUpdateWidget(covariant DateStrip oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.selectedDate != null &&
+        !_sameDate(widget.selectedDate!, selectedDate)) {
+      final value = widget.selectedDate!;
+      selectedDate = DateTime(value.year, value.month, value.day);
+    }
+  }
+
+  DateTime _weekStart(DateTime date) {
+    final normalized = DateTime(date.year, date.month, date.day);
+    return normalized.subtract(Duration(days: normalized.weekday - 1));
+  }
+
+  bool _sameDate(DateTime first, DateTime second) =>
+      first.year == second.year &&
+      first.month == second.month &&
+      first.day == second.day;
+
+  @override
+  Widget build(BuildContext context) {
+    final anchor = widget.weekOf ?? selectedDate;
+    final start = _weekStart(anchor);
+    final isEnglish = EcoFitAppState.instance.language == 'en';
+    const viDays = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
+    const enDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    final weekdayLabels = isEnglish ? enDays : viDays;
+
+    return Row(
+      children: List.generate(7, (i) {
+        final date = start.add(Duration(days: i));
+        final active = _sameDate(date, selectedDate);
+        return Expanded(
+          child: InkWell(
+            borderRadius: BorderRadius.circular(10),
+            onTap: () {
+              setState(() => selectedDate = date);
+              widget.onSelected?.call(date);
+            },
+            child: Container(
+              margin: const EdgeInsets.symmetric(horizontal: 2),
+              padding: const EdgeInsets.symmetric(vertical: 7),
+              decoration: BoxDecoration(
+                color: active
+                    ? Theme.of(context).colorScheme.primary
+                    : Theme.of(context).colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                '${weekdayLabels[i]}\n${date.day}',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 8,
+                  fontWeight: FontWeight.w700,
+                  color: active
+                      ? Theme.of(context).colorScheme.onPrimary
+                      : Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
             ),
           ),
-        ),
-      );
-    }),
-  );
+        );
+      }),
+    );
+  }
 }
 
 class QuoteCard extends StatelessWidget {
@@ -421,12 +811,19 @@ class QuoteCard extends StatelessWidget {
     width: double.infinity,
     padding: const EdgeInsets.all(14),
     decoration: BoxDecoration(
-      color: const Color(0xFFEFF6E9),
+      color: Theme.of(context).brightness == Brightness.dark
+          ? const Color(0xFF193122)
+          : const Color(0xFFEFF6E9),
       borderRadius: BorderRadius.circular(14),
     ),
     child: Text(
       text,
-      style: const TextStyle(fontSize: 10, color: Color(0xFF4D6552)),
+      style: TextStyle(
+        fontSize: 10,
+        color: Theme.of(context).brightness == Brightness.dark
+            ? const Color(0xFFC5EDD0)
+            : const Color(0xFF4D6552),
+      ),
     ),
   );
 }

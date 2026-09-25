@@ -13,6 +13,13 @@ abstract final class AppRoutes {
   static const checkIn = '/checkin';
   static const coach = '/coach';
   static const profile = '/profile';
+  static const workoutSession = '/workout/session';
+  static const accountSettings = '/settings/account';
+  static const notificationSettings = '/settings/notifications';
+  static const languageSettings = '/settings/language';
+  static const appearanceSettings = '/settings/appearance';
+  static const help = '/settings/help';
+  static const about = '/settings/about';
 
   static const _mealPrefix = '/meal/';
 
@@ -39,5 +46,12 @@ abstract final class AppRoutes {
     checkIn,
     coach,
     profile,
+    workoutSession,
+    accountSettings,
+    notificationSettings,
+    languageSettings,
+    appearanceSettings,
+    help,
+    about,
   };
 }

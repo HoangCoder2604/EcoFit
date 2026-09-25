@@ -33,4 +33,25 @@ void main() {
     expect(preferences.getDouble('metrics.height'), 168);
     expect(preferences.getDouble('metrics.weight'), 62);
   });
+
+  test('lưu và nạp lại toàn bộ thiết lập cá nhân', () async {
+    SharedPreferences.setMockInitialValues({});
+    final state = EcoFitAppState.instance;
+    state.resetForTesting();
+
+    await state.updateDailyReminders(false);
+    await state.updateNotifications(meal: false, workout: true, weekly: true);
+    await state.updateLanguage('en');
+    await state.updateAppearance('dark');
+
+    state.resetForTesting();
+    await state.load();
+
+    expect(state.dailyReminders, isFalse);
+    expect(state.mealReminder, isFalse);
+    expect(state.workoutReminder, isTrue);
+    expect(state.weeklyReport, isTrue);
+    expect(state.language, 'en');
+    expect(state.appearance, 'dark');
+  });
 }

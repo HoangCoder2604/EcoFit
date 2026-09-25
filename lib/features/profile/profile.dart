@@ -1,1 +1,1 @@
-export '../../screens.dart' show ProfileScreen;
+export '../../screens.dart' show ProfileScreen, SettingsDetailScreen;
