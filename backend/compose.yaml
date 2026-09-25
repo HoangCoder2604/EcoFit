@@ -1,0 +1,23 @@
+name: eco-fit
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ecofit}
+      POSTGRES_USER: ${POSTGRES_USER:-ecofit}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ecofit_dev_password}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - eco_fit_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  eco_fit_postgres_data:

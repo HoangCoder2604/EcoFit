@@ -1,0 +1,13 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  runtime      = "nodejs"
+  moduleFormat = "cjs"
+  engineType   = "client"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// Các model nghiệp vụ sẽ được thêm ở phase Database Schema tiếp theo.

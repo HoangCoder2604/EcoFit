@@ -1,26 +1,64 @@
-# Eco Fit Flutter
+# Eco Fit - 15 UI Frontend
 
-Bản Flutter native được chuyển từ prototype React/Vite ở thư mục cha, giữ nguyên 15 màn hình, nội dung tiếng Việt và các tương tác demo/local state.
+Bản frontend được dựng theo 15 UI đã chốt.
+
+## 15 màn hình
+1. Splash
+2. Onboarding Food
+3. Onboarding Workout
+4. Login / Sign up
+5. Home Dashboard
+6. Meal Plan
+7. Meal Detail
+8. Grocery & Budget
+9. Workout Plan
+10. Exercise Detail
+11. Progress
+12. Body Metrics
+13. Daily Check-in
+14. AI Coach
+15. Profile & Settings
+
+## Công nghệ
+- Vite
+- React
+- React Router
+- Lucide React
+- CSS thuần
+- Dữ liệu demo/local state
 
 ## Chạy dự án
-
 ```bash
-flutter pub get
-flutter run
+npm install
+npm run dev
 ```
 
-Chọn thiết bị Android, iOS, Windows hoặc trình duyệt từ danh sách thiết bị của Flutter.
+Mở URL Vite hiện trong terminal, thường là:
+```text
+http://localhost:5173
+```
 
-## Cấu trúc chính
+## Build
+```bash
+npm run build
+npm run preview
+```
 
-- `lib/app`: app root và router tập trung
-- `lib/core`: theme và nền tảng dùng chung
-- `lib/domain`: model và nghiệp vụ thuần Dart
-- `lib/data`: mock data, sau này thay bằng repository/API
-- `lib/features`: public API theo từng feature
-- `lib/shared`: widget dùng chung
-- `docs/architecture.md`: quy tắc kiến trúc và phụ thuộc
+## Route nhanh
+- `/` splash
+- `/home`
+- `/meals`
+- `/workouts`
+- `/progress`
+- `/metrics`
+- `/checkin`
+- `/coach`
+- `/profile`
 
-## Màn hình
+## NestJS Backend
 
-Splash, Onboarding Food, Onboarding Workout, Login, Home, Meal Plan, Meal Detail, Grocery, Workout Plan, Exercise Detail, Progress, Body Metrics, Daily Check-in, AI Coach và Profile.
+Backend nền tảng nằm trong thư mục `backend/`. Xem hướng dẫn chạy, health check,
+Swagger và kiểm thử tại [`backend/README.md`](backend/README.md).
+
+PostgreSQL và Prisma chưa được thêm ở phase này; chúng thuộc phase tiếp theo của
+lộ trình Eco Fit.
