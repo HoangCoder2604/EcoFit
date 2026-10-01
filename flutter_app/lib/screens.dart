@@ -1,12 +1,17 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
 import 'app/router/app_routes.dart';
 import 'app/localization/eco_fit_localization.dart';
 import 'app/state/eco_fit_app_state.dart';
+import 'data/remote/auth_api.dart';
 import 'data.dart';
 import 'theme.dart';
 import 'widgets.dart';
+import 'widgets/google_auth_button.dart';
 
 const pagePadding = EdgeInsets.fromLTRB(16, 8, 16, 24);
 const gap8 = SizedBox(height: 8);
@@ -295,7 +300,12 @@ class _SplashButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => FilledButton.icon(
-    onPressed: () => Navigator.pushNamed(context, AppRoutes.onboardingFood),
+    onPressed: () => Navigator.pushNamed(
+      context,
+      EcoFitAppState.instance.isAuthenticated
+          ? AppRoutes.home
+          : AppRoutes.onboardingFood,
+    ),
     icon: const Icon(Icons.arrow_forward),
     iconAlignment: IconAlignment.end,
     label: Text(l10n('Bắt đầu hành trình', 'Start Your Journey')),
@@ -799,7 +809,301 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  bool login = true, remember = false, obscure = true;
+  static const googleClientId = String.fromEnvironment('GOOGLE_WEB_CLIENT_ID');
+  static Future<void>? _googleInitialization;
+  bool login = true, remember = true, obscure = true;
+  bool submitting = false;
+  bool awaitingEmailVerification = false;
+  bool googleReady = false;
+  final emailController = TextEditingController();
+  final passwordController = TextEditingController();
+  final displayNameController = TextEditingController();
+  final verificationCodeController = TextEditingController();
+  StreamSubscription<GoogleSignInAuthenticationEvent>? googleEvents;
+  EmailVerificationChallenge? verificationChallenge;
+  String? emailError, passwordError, displayNameError, submitError;
+
+  bool get googleConfigured => googleClientId.isNotEmpty;
+
+  @override
+  void initState() {
+    super.initState();
+    if (googleConfigured) _initializeGoogle();
+  }
+
+  Future<void> _initializeGoogle() async {
+    googleEvents = GoogleSignIn.instance.authenticationEvents.listen(
+      (event) {
+        if (event is GoogleSignInAuthenticationEventSignIn) {
+          unawaited(_completeGoogleSignIn(event.user));
+        }
+      },
+      onError: (Object error) {
+        if (mounted) {
+          setState(
+            () => submitError = l10n(
+              'Không thể kết nối Google. Vui lòng thử lại.',
+              'Could not connect to Google. Please try again.',
+            ),
+          );
+        }
+      },
+    );
+    try {
+      _googleInitialization ??= GoogleSignIn.instance.initialize(
+        clientId: kIsWeb ? googleClientId : null,
+        serverClientId: googleClientId,
+      );
+      await _googleInitialization;
+      if (mounted) setState(() => googleReady = true);
+    } catch (_) {
+      if (mounted) {
+        setState(
+          () => submitError = l10n(
+            'Cấu hình Google Sign-In chưa hợp lệ.',
+            'Google Sign-In is not configured correctly.',
+          ),
+        );
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    emailController.dispose();
+    passwordController.dispose();
+    displayNameController.dispose();
+    verificationCodeController.dispose();
+    googleEvents?.cancel();
+    super.dispose();
+  }
+
+  bool _validate() {
+    final email = emailController.text.trim();
+    final password = passwordController.text;
+    final displayName = displayNameController.text.trim();
+    final validEmail = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
+    setState(() {
+      emailError = email.isEmpty
+          ? l10n('Vui lòng nhập email', 'Please enter your email')
+          : (!validEmail.hasMatch(email)
+                ? l10n('Email không đúng định dạng', 'Invalid email address')
+                : null);
+      passwordError = password.isEmpty
+          ? l10n('Vui lòng nhập mật khẩu', 'Please enter your password')
+          : (password.length < 8
+                ? l10n(
+                    'Mật khẩu phải có ít nhất 8 ký tự',
+                    'Password must contain at least 8 characters',
+                  )
+                : null);
+      if (!login && passwordError == null) {
+        final strong = RegExp(r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$');
+        if (!strong.hasMatch(password)) {
+          passwordError = l10n(
+            'Cần có chữ hoa, chữ thường và chữ số',
+            'Include uppercase, lowercase and a number',
+          );
+        }
+      }
+      displayNameError = !login && displayName.length < 2
+          ? l10n(
+              'Tên phải có ít nhất 2 ký tự',
+              'Name must be at least 2 characters',
+            )
+          : null;
+      submitError = null;
+    });
+    return emailError == null &&
+        passwordError == null &&
+        displayNameError == null;
+  }
+
+  Future<void> _submit() async {
+    if (submitting || !_validate()) return;
+    setState(() => submitting = true);
+    try {
+      if (login) {
+        await EcoFitAppState.instance.login(
+          email: emailController.text,
+          password: passwordController.text,
+          remember: remember,
+        );
+      } else {
+        final challenge = await EcoFitAppState.instance.register(
+          email: emailController.text,
+          displayName: displayNameController.text,
+          password: passwordController.text,
+          remember: remember,
+        );
+        if (!mounted) return;
+        setState(() {
+          verificationChallenge = challenge;
+          awaitingEmailVerification = true;
+          verificationCodeController.text = challenge.developmentCode ?? '';
+        });
+        return;
+      }
+      if (!mounted) return;
+      Navigator.pushNamedAndRemoveUntil(context, AppRoutes.home, (_) => false);
+    } on AuthApiException catch (error) {
+      if (login && error.statusCode == 403) {
+        try {
+          final challenge = await EcoFitAppState.instance.resendVerification(
+            emailController.text,
+          );
+          if (mounted && challenge != null) {
+            setState(() {
+              verificationChallenge = challenge;
+              awaitingEmailVerification = true;
+              verificationCodeController.text = challenge.developmentCode ?? '';
+              submitError = null;
+            });
+            return;
+          }
+        } on AuthApiException catch (resendError) {
+          if (mounted) setState(() => submitError = resendError.message);
+          return;
+        }
+      }
+      if (mounted) setState(() => submitError = error.message);
+    } catch (_) {
+      if (mounted) {
+        setState(
+          () => submitError = l10n(
+            'Không thể đăng nhập lúc này. Vui lòng thử lại.',
+            'Unable to sign in right now. Please try again.',
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => submitting = false);
+    }
+  }
+
+  Future<void> _submitVerification() async {
+    final code = verificationCodeController.text.trim();
+    if (submitting) return;
+    if (!RegExp(r'^\d{6}$').hasMatch(code)) {
+      setState(
+        () => submitError = l10n(
+          'Vui lòng nhập đúng mã gồm 6 chữ số.',
+          'Enter the 6-digit verification code.',
+        ),
+      );
+      return;
+    }
+    setState(() {
+      submitting = true;
+      submitError = null;
+    });
+    try {
+      await EcoFitAppState.instance.verifyEmail(
+        email: verificationChallenge!.email,
+        code: code,
+        remember: remember,
+      );
+      if (!mounted) return;
+      Navigator.pushNamedAndRemoveUntil(context, AppRoutes.home, (_) => false);
+    } on AuthApiException catch (error) {
+      if (mounted) setState(() => submitError = error.message);
+    } finally {
+      if (mounted) setState(() => submitting = false);
+    }
+  }
+
+  Future<void> _resendVerification() async {
+    if (submitting || verificationChallenge == null) return;
+    setState(() {
+      submitting = true;
+      submitError = null;
+    });
+    try {
+      final challenge = await EcoFitAppState.instance.resendVerification(
+        verificationChallenge!.email,
+      );
+      if (!mounted) return;
+      if (challenge != null) {
+        setState(() {
+          verificationChallenge = challenge;
+          verificationCodeController.text = challenge.developmentCode ?? '';
+        });
+      }
+    } on AuthApiException catch (error) {
+      if (mounted) setState(() => submitError = error.message);
+    } finally {
+      if (mounted) setState(() => submitting = false);
+    }
+  }
+
+  Future<void> _startGoogleSignIn() async {
+    if (!googleConfigured) {
+      _showGoogleSetupRequired();
+      return;
+    }
+    if (!googleReady || submitting) return;
+    try {
+      if (GoogleSignIn.instance.supportsAuthenticate()) {
+        await GoogleSignIn.instance.authenticate();
+      }
+    } on GoogleSignInException catch (error) {
+      if (error.code != GoogleSignInExceptionCode.canceled && mounted) {
+        setState(
+          () => submitError = l10n(
+            'Đăng nhập Google không thành công.',
+            'Google sign-in failed.',
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _completeGoogleSignIn(GoogleSignInAccount account) async {
+    final idToken = account.authentication.idToken;
+    if (idToken == null || submitting) return;
+    setState(() {
+      submitting = true;
+      submitError = null;
+    });
+    try {
+      await EcoFitAppState.instance.loginWithGoogle(
+        idToken: idToken,
+        remember: remember,
+      );
+      if (!mounted) return;
+      Navigator.pushNamedAndRemoveUntil(context, AppRoutes.home, (_) => false);
+    } on AuthApiException catch (error) {
+      if (mounted) setState(() => submitError = error.message);
+    } finally {
+      if (mounted) setState(() => submitting = false);
+    }
+  }
+
+  void _switchMode() => setState(() {
+    login = !login;
+    emailError = null;
+    passwordError = null;
+    displayNameError = null;
+    submitError = null;
+  });
+
+  void _showGoogleSetupRequired() => _infoDialog(
+    context,
+    l10n('Đăng nhập Google', 'Google sign-in'),
+    l10n(
+      'Google Sign-In đã được tích hợp nhưng cần GOOGLE_WEB_CLIENT_ID của dự án Google Cloud để chạy thật.',
+      'Google Sign-In is integrated but needs the project GOOGLE_WEB_CLIENT_ID to run.',
+    ),
+  );
+
+  void _showPasswordRecovery() => _infoDialog(
+    context,
+    l10n('Khôi phục mật khẩu', 'Password recovery'),
+    l10n(
+      'Tính năng đặt lại mật khẩu chưa được bật. Eco Fit sẽ không gửi email giả khi máy chủ chưa hỗ trợ.',
+      'Password reset is not enabled yet. Eco Fit will not claim an email was sent before server support is ready.',
+    ),
+  );
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(
@@ -853,90 +1157,186 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
             ),
             const SizedBox(height: 28),
+            ..._authFormContent(context, compact: true),
+            const SizedBox(height: 55),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.eco,
+                  size: 18,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    l10n(
+                      'Sức khỏe hôm nay, một tương lai tươi sáng hơn.',
+                      'Health today, a brighter tomorrow.',
+                    ),
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 10,
+                      color: Color(0xFF55705A),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+
+  List<Widget> _authFormContent(
+    BuildContext context, {
+    required bool compact,
+  }) => awaitingEmailVerification
+      ? _verificationContent(context)
+      : [
+          if (!login) ...[
             TextField(
+              key: const Key('auth-display-name'),
+              controller: displayNameController,
+              enabled: !submitting,
+              textCapitalization: TextCapitalization.words,
+              autofillHints: const [AutofillHints.name],
               decoration: InputDecoration(
-                prefixIcon: const Icon(Icons.mail_outline),
-                hintText: l10n('Email của bạn', 'Your email address'),
+                labelText: l10n('Tên hiển thị', 'Display name'),
+                hintText: l10n('Minh Anh', 'Your name'),
+                prefixIcon: const Icon(Icons.person_outline),
+                errorText: displayNameError,
               ),
             ),
             gap12,
-            TextField(
-              obscureText: obscure,
-              decoration: InputDecoration(
-                prefixIcon: const Icon(Icons.lock_outline),
-                hintText: l10n('Mật khẩu', 'Password'),
-                suffixIcon: IconButton(
-                  onPressed: () => setState(() => obscure = !obscure),
-                  icon: const Icon(Icons.visibility_outlined),
+          ],
+          TextField(
+            key: const Key('auth-email'),
+            controller: emailController,
+            enabled: !submitting,
+            keyboardType: TextInputType.emailAddress,
+            autofillHints: const [AutofillHints.email],
+            textInputAction: TextInputAction.next,
+            decoration: InputDecoration(
+              labelText: 'Email',
+              prefixIcon: const Icon(Icons.mail_outline),
+              hintText: l10n('ban@email.com', 'you@email.com'),
+              errorText: emailError,
+            ),
+          ),
+          gap12,
+          TextField(
+            key: const Key('auth-password'),
+            controller: passwordController,
+            enabled: !submitting,
+            obscureText: obscure,
+            autofillHints: login
+                ? const [AutofillHints.password]
+                : const [AutofillHints.newPassword],
+            textInputAction: TextInputAction.done,
+            onSubmitted: (_) => _submit(),
+            decoration: InputDecoration(
+              labelText: l10n('Mật khẩu', 'Password'),
+              prefixIcon: const Icon(Icons.lock_outline),
+              errorText: passwordError,
+              suffixIcon: IconButton(
+                onPressed: submitting
+                    ? null
+                    : () => setState(() => obscure = !obscure),
+                icon: Icon(
+                  obscure
+                      ? Icons.visibility_outlined
+                      : Icons.visibility_off_outlined,
                 ),
               ),
             ),
-            if (login)
-              Row(
-                children: [
-                  Checkbox(
-                    value: remember,
-                    onChanged: (v) => setState(() => remember = v!),
-                  ),
-                  Text(
-                    l10n('Ghi nhớ đăng nhập', 'Remember me'),
-                    style: const TextStyle(fontSize: 10),
-                  ),
-                  const Spacer(),
-                  TextButton(
-                    onPressed: () => _infoDialog(
-                      context,
-                      'Khôi phục mật khẩu',
-                      'Liên kết đặt lại mật khẩu đã được gửi tới email của bạn.',
-                    ),
-                    child: Text(
-                      l10n('Quên mật khẩu?', 'Forgot password?'),
-                      style: const TextStyle(fontSize: 10),
-                    ),
-                  ),
-                ],
+          ),
+          Row(
+            children: [
+              Checkbox(
+                value: remember,
+                onChanged: submitting
+                    ? null
+                    : (value) => setState(() => remember = value ?? false),
               ),
-            gap12,
-            FilledButton(
-              onPressed: () => Navigator.pushNamedAndRemoveUntil(
-                context,
-                AppRoutes.home,
-                (_) => false,
+              Expanded(
+                child: Text(
+                  l10n('Ghi nhớ đăng nhập', 'Remember me'),
+                  style: TextStyle(fontSize: compact ? 11 : null),
+                ),
+              ),
+              if (login)
+                TextButton(
+                  onPressed: submitting ? null : _showPasswordRecovery,
+                  child: Text(
+                    l10n('Quên mật khẩu?', 'Forgot password?'),
+                    style: TextStyle(fontSize: compact ? 11 : null),
+                  ),
+                ),
+            ],
+          ),
+          if (submitError != null) ...[
+            Container(
+              key: const Key('auth-submit-error'),
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.errorContainer,
+                borderRadius: BorderRadius.circular(12),
               ),
               child: Text(
-                login
-                    ? l10n('Đăng nhập', 'Sign In')
-                    : l10n('Tạo tài khoản', 'Create Account'),
+                submitError!,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onErrorContainer,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
-            Padding(
-              padding: EdgeInsets.symmetric(vertical: 16),
-              child: Row(
-                children: [
-                  const Expanded(child: Divider()),
-                  Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 10),
-                    child: Text(
-                      l10n('hoặc', 'or'),
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
+            gap12,
+          ],
+          FilledButton(
+            key: const Key('auth-submit'),
+            onPressed: submitting ? null : _submit,
+            child: submitting
+                ? const SizedBox.square(
+                    dimension: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Text(
+                    login
+                        ? l10n('Đăng nhập', 'Sign In')
+                        : l10n('Tạo tài khoản', 'Create Account'),
+                  ),
+          ),
+          Padding(
+            padding: EdgeInsets.symmetric(vertical: compact ? 16 : 18),
+            child: Row(
+              children: [
+                const Expanded(child: Divider()),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Text(
+                    l10n('hoặc', 'or'),
+                    style: TextStyle(
+                      fontSize: compact ? 11 : null,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
                   ),
-                  const Expanded(child: Divider()),
-                ],
-              ),
+                ),
+                const Expanded(child: Divider()),
+              ],
             ),
+          ),
+          if (googleConfigured)
+            buildGoogleAuthButton(
+              onPressed: googleReady && !submitting ? _startGoogleSignIn : null,
+              signUp: !login,
+              locale: EcoFitAppState.instance.language,
+            )
+          else
             OutlinedButton.icon(
-              onPressed: () {
-                _toast(context, 'Đã xác thực tài khoản Google');
-                Navigator.pushNamedAndRemoveUntil(
-                  context,
-                  AppRoutes.home,
-                  (_) => false,
-                );
-              },
+              onPressed: submitting ? null : _showGoogleSetupRequired,
               icon: const Text(
                 'G',
                 style: TextStyle(
@@ -951,60 +1351,128 @@ class _LoginScreenState extends State<LoginScreen> {
                     : l10n('Đăng ký với Google', 'Sign up with Google'),
               ),
             ),
-            gap12,
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
+          gap12,
+          Wrap(
+            alignment: WrapAlignment.center,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text(
+                login
+                    ? l10n('Chưa có tài khoản? ', "Don't have an account? ")
+                    : l10n('Đã có tài khoản? ', 'Already have an account? '),
+                style: TextStyle(
+                  fontSize: compact ? 11 : null,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+              TextButton(
+                onPressed: submitting ? null : _switchMode,
+                child: Text(
                   login
-                      ? l10n('Chưa có tài khoản? ', "Don't have an account? ")
-                      : l10n('Đã có tài khoản? ', 'Already have an account? '),
+                      ? l10n('Tạo tài khoản', 'Create Account')
+                      : l10n('Đăng nhập', 'Sign In'),
                   style: TextStyle(
-                    fontSize: 10,
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontSize: compact ? 11 : null,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
-                TextButton(
-                  onPressed: () => setState(() => login = !login),
-                  child: Text(
-                    login
-                        ? l10n('Tạo tài khoản', 'Create Account')
-                        : l10n('Đăng nhập', 'Sign In'),
-                    style: const TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 55),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.eco,
-                  size: 18,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  l10n(
-                    'Sức khỏe hôm nay, một tương lai tươi sáng hơn.',
-                    'Health today, a brighter tomorrow.',
-                  ),
-                  style: const TextStyle(
-                    fontSize: 10,
-                    color: Color(0xFF55705A),
-                  ),
-                ),
-              ],
-            ),
-          ],
+              ),
+            ],
+          ),
+        ];
+
+  List<Widget> _verificationContent(BuildContext context) => [
+    Icon(
+      Icons.mark_email_read_outlined,
+      size: 54,
+      color: Theme.of(context).colorScheme.primary,
+    ),
+    gap12,
+    Text(
+      l10n('Xác minh email', 'Verify your email'),
+      style: Theme.of(context).textTheme.titleLarge,
+    ),
+    gap8,
+    Text(
+      l10n(
+        'Nhập mã 6 số đã gửi tới ${verificationChallenge?.email}.',
+        'Enter the 6-digit code sent to ${verificationChallenge?.email}.',
+      ),
+      textAlign: TextAlign.center,
+    ),
+    if (verificationChallenge?.developmentCode != null) ...[
+      gap12,
+      Text(
+        l10n(
+          'Chế độ local: mã đã được điền sẵn. Khi deploy, mã chỉ được gửi qua email.',
+          'Local mode: the code is prefilled. In production it is sent only by email.',
         ),
+        textAlign: TextAlign.center,
+        style: TextStyle(color: Theme.of(context).colorScheme.tertiary),
+      ),
+    ],
+    gap16,
+    TextField(
+      key: const Key('auth-verification-code'),
+      controller: verificationCodeController,
+      enabled: !submitting,
+      keyboardType: TextInputType.number,
+      textAlign: TextAlign.center,
+      maxLength: 6,
+      onSubmitted: (_) => _submitVerification(),
+      decoration: InputDecoration(
+        labelText: l10n('Mã xác minh', 'Verification code'),
+        prefixIcon: const Icon(Icons.password_outlined),
       ),
     ),
-  );
+    if (submitError != null) ...[
+      Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.errorContainer,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Text(
+          submitError!,
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onErrorContainer,
+          ),
+        ),
+      ),
+      gap12,
+    ],
+    FilledButton(
+      key: const Key('auth-verify-submit'),
+      onPressed: submitting ? null : _submitVerification,
+      child: submitting
+          ? const SizedBox.square(
+              dimension: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : Text(l10n('Xác minh và tiếp tục', 'Verify and continue')),
+    ),
+    gap8,
+    Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        TextButton(
+          onPressed: submitting ? null : _resendVerification,
+          child: Text(l10n('Gửi lại mã', 'Resend code')),
+        ),
+        TextButton(
+          onPressed: submitting
+              ? null
+              : () => setState(() {
+                  awaitingEmailVerification = false;
+                  verificationChallenge = null;
+                  submitError = null;
+                }),
+          child: Text(l10n('Đổi email', 'Change email')),
+        ),
+      ],
+    ),
+  ];
 
   Widget _desktop(BuildContext context) => Scaffold(
     body: SafeArea(
@@ -1121,130 +1589,7 @@ class _LoginScreenState extends State<LoginScreen> {
         style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
       ),
       const SizedBox(height: 28),
-      TextField(
-        decoration: InputDecoration(
-          labelText: 'Email',
-          prefixIcon: const Icon(Icons.mail_outline),
-          hintText: l10n('ban@email.com', 'you@email.com'),
-        ),
-      ),
-      gap12,
-      TextField(
-        obscureText: obscure,
-        decoration: InputDecoration(
-          labelText: l10n('Mật khẩu', 'Password'),
-          prefixIcon: const Icon(Icons.lock_outline),
-          suffixIcon: IconButton(
-            onPressed: () => setState(() => obscure = !obscure),
-            icon: Icon(
-              obscure
-                  ? Icons.visibility_outlined
-                  : Icons.visibility_off_outlined,
-            ),
-          ),
-        ),
-      ),
-      if (login)
-        Row(
-          children: [
-            Checkbox(
-              value: remember,
-              onChanged: (v) => setState(() => remember = v!),
-            ),
-            Expanded(child: Text(l10n('Ghi nhớ đăng nhập', 'Remember me'))),
-            TextButton(
-              onPressed: () => _infoDialog(
-                context,
-                l10n('Khôi phục mật khẩu', 'Password recovery'),
-                l10n(
-                  'Liên kết đặt lại mật khẩu đã được gửi tới email của bạn.',
-                  'A reset link has been sent to your email.',
-                ),
-              ),
-              child: Text(l10n('Quên mật khẩu?', 'Forgot password?')),
-            ),
-          ],
-        ),
-      const SizedBox(height: 10),
-      FilledButton(
-        onPressed: () => Navigator.pushNamedAndRemoveUntil(
-          context,
-          AppRoutes.home,
-          (_) => false,
-        ),
-        child: Text(
-          login
-              ? l10n('Đăng nhập', 'Sign In')
-              : l10n('Tạo tài khoản', 'Create Account'),
-        ),
-      ),
-      Padding(
-        padding: const EdgeInsets.symmetric(vertical: 18),
-        child: Row(
-          children: [
-            const Expanded(child: Divider()),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Text(
-                l10n('hoặc', 'or'),
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ),
-            const Expanded(child: Divider()),
-          ],
-        ),
-      ),
-      OutlinedButton.icon(
-        onPressed: () {
-          _toast(
-            context,
-            l10n('Đã xác thực tài khoản Google', 'Google account verified'),
-          );
-          Navigator.pushNamedAndRemoveUntil(
-            context,
-            AppRoutes.home,
-            (_) => false,
-          );
-        },
-        icon: const Text(
-          'G',
-          style: TextStyle(
-            color: Colors.blue,
-            fontSize: 18,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        label: Text(
-          login
-              ? l10n('Đăng nhập với Google', 'Sign in with Google')
-              : l10n('Đăng ký với Google', 'Sign up with Google'),
-        ),
-      ),
-      const SizedBox(height: 12),
-      Wrap(
-        alignment: WrapAlignment.center,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
-          Text(
-            login
-                ? l10n('Chưa có tài khoản? ', "Don't have an account? ")
-                : l10n('Đã có tài khoản? ', 'Already have an account? '),
-            style: TextStyle(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-          ),
-          TextButton(
-            onPressed: () => setState(() => login = !login),
-            child: Text(
-              login
-                  ? l10n('Tạo tài khoản', 'Create Account')
-                  : l10n('Đăng nhập', 'Sign In'),
-            ),
-          ),
-        ],
-      ),
+      ..._authFormContent(context, compact: false),
     ],
   );
 }
@@ -4022,11 +4367,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           gap12,
           FilledButton.tonalIcon(
-            onPressed: () => Navigator.pushNamedAndRemoveUntil(
-              context,
-              AppRoutes.login,
-              (_) => false,
-            ),
+            onPressed: () async {
+              await EcoFitAppState.instance.logout();
+              if (!context.mounted) return;
+              Navigator.pushNamedAndRemoveUntil(
+                context,
+                AppRoutes.login,
+                (_) => false,
+              );
+            },
             style: FilledButton.styleFrom(
               backgroundColor: dark
                   ? const Color(0xFF38231F)

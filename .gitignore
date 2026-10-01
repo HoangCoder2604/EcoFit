@@ -39,6 +39,7 @@ flutter_app/android/key.properties
 .idea/
 .vscode/
 *.iml
+.codex/
 
 # OS
 .DS_Store

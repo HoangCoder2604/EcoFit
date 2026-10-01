@@ -1,6 +1,6 @@
 # Eco Fit API
 
-Backend Eco Fit xây dựng bằng NestJS 11, PostgreSQL và Prisma ORM 7. Prisma dùng PostgreSQL driver adapter thuần JavaScript để build gọn và triển khai linh hoạt.
+Backend Eco Fit xây dựng bằng NestJS 11, PostgreSQL và Prisma ORM 7. Prisma dùng PostgreSQL driver adapter thuần JavaScript để build gọn và triển khai linh hoạt. Authentication hỗ trợ access JWT ngắn hạn, refresh token xoay vòng lưu dạng SHA-256 trong database và rate limit cho các endpoint nhạy cảm.
 
 ## Yêu cầu
 
@@ -47,7 +47,36 @@ npm run build
 - `npm run db:deploy` áp dụng migration đã có trong production.
 - `npm run db:studio` mở Prisma Studio.
 
-Schema hiện chỉ khai báo PostgreSQL và Prisma Client. Các model nghiệp vụ sẽ được thêm ở phase **Database Schema** tiếp theo.
+Schema hiện có `User`, `RefreshSession`, `EmailVerification` và `AuthIdentity` phục vụ Authentication. Các model hồ sơ, dinh dưỡng và tập luyện sẽ được bổ sung ở phase schema nghiệp vụ.
+
+## Authentication
+
+| Method | Endpoint | Mục đích |
+| --- | --- | --- |
+| `POST` | `/api/v1/auth/register` | Đăng ký và gửi mã xác minh email |
+| `POST` | `/api/v1/auth/email/verify` | Xác minh mã 6 số rồi nhận cặp token |
+| `POST` | `/api/v1/auth/email/resend` | Gửi lại mã xác minh email |
+| `POST` | `/api/v1/auth/login` | Đăng nhập bằng email/mật khẩu |
+| `POST` | `/api/v1/auth/google` | Kiểm chứng Google ID token rồi tạo phiên Eco Fit |
+| `POST` | `/api/v1/auth/refresh` | Xoay vòng refresh token |
+| `POST` | `/api/v1/auth/logout` | Thu hồi refresh token |
+| `GET` | `/api/v1/auth/me` | Kiểm tra access token và lấy người dùng |
+
+Ở production, phải đặt `JWT_ACCESS_SECRET` thành chuỗi ngẫu nhiên riêng dài ít nhất 32 ký tự. Ứng dụng Android nên giữ refresh token trong secure storage; web production nên dùng lớp BFF hoặc cookie `HttpOnly`, không lưu token dài hạn trong `localStorage`.
+
+### Email thật và Google OAuth
+
+- Local mặc định dùng `EMAIL_DELIVERY_MODE=console`: mã 6 số được ghi log và trả trong `developmentCode` để test, không giả vờ đã gửi email.
+- Production dùng `EMAIL_DELIVERY_MODE=smtp` và bắt buộc cấu hình `EMAIL_FROM`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`. Response production không bao giờ trả mã xác minh.
+- `GOOGLE_CLIENT_IDS` chứa một hoặc nhiều OAuth Client ID được Google Cloud cấp, phân cách bằng dấu phẩy. Backend dùng thư viện Google chính thức để kiểm tra chữ ký, audience, issuer, hạn token và `email_verified`.
+- Flutter build với `--dart-define=GOOGLE_WEB_CLIENT_ID=<web-client-id>`. Android cần thêm OAuth Android client cho package `com.ecofit.eco_fit` và SHA-1 của khóa ký; Web client phải cho phép origin của website.
+
+Ví dụ build:
+
+```bash
+flutter build web --dart-define=GOOGLE_WEB_CLIENT_ID=123.apps.googleusercontent.com
+flutter build apk --debug --dart-define=GOOGLE_WEB_CLIENT_ID=123.apps.googleusercontent.com
+```
 
 Xem hướng dẫn production chi tiết tại [`DEPLOYMENT.md`](DEPLOYMENT.md).
 

@@ -1,5 +1,11 @@
 import 'package:eco_fit/app/state/eco_fit_app_state.dart';
+
+import 'dart:convert';
+
+import 'package:eco_fit/data/remote/auth_api.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -53,5 +59,39 @@ void main() {
     expect(state.weeklyReport, isTrue);
     expect(state.language, 'en');
     expect(state.appearance, 'dark');
+  });
+
+  test('khôi phục phiên đã lưu trước khi router kiểm tra đăng nhập', () async {
+    SharedPreferences.setMockInitialValues({
+      'auth.accessToken': 'stored-access',
+      'auth.refreshToken': 'stored-refresh',
+    });
+    final state = EcoFitAppState.instance;
+    state.resetForTesting();
+    state.setAuthApiForTesting(
+      AuthApi(
+        baseUrl: 'http://api.test/api/v1',
+        client: MockClient(
+          (request) async => http.Response(
+            jsonEncode({
+              'success': true,
+              'data': {
+                'id': 'user-id',
+                'email': 'minh@example.com',
+                'displayName': 'Minh Anh',
+                'role': 'USER',
+              },
+            }),
+            200,
+          ),
+        ),
+      ),
+    );
+
+    await state.load();
+
+    expect(state.isLoaded, isTrue);
+    expect(state.isAuthenticated, isTrue);
+    expect(state.authUser?.email, 'minh@example.com');
   });
 }

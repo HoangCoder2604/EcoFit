@@ -8,19 +8,29 @@ import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { ApiResponseInterceptor } from './common/interceptors/api-response.interceptor';
 import { RequestContextMiddleware } from './common/middleware/request-context.middleware';
-import { parseCorsOrigins } from './config/environment';
+import { isCorsOriginAllowed, parseCorsOrigins } from './config/environment';
 
 export async function createApp() {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
   const config = app.get(ConfigService);
   const origins = parseCorsOrigins(config.get<string>('CORS_ORIGINS'));
+  const allowLoopbackOrigins = config.get<string>('NODE_ENV', 'development') !== 'production';
   const requestContext = new RequestContextMiddleware();
 
   app.useLogger(new Logger('EcoFitApi'));
   app.use(requestContext.use.bind(requestContext));
   app.use(helmet());
   app.enableCors({
-    origin: origins.length > 0 ? origins : true,
+    origin: (
+      origin: string | undefined,
+      callback: (error: Error | null, allow?: boolean) => void,
+    ) => {
+      if (isCorsOriginAllowed(origin, origins, allowLoopbackOrigins)) {
+        callback(null, true);
+        return;
+      }
+      callback(new Error(`CORS không cho phép origin: ${origin}`), false);
+    },
     credentials: true,
     methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   });

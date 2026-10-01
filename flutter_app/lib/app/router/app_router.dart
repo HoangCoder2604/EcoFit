@@ -1,16 +1,27 @@
 import 'package:flutter/material.dart';
 
 import '../../features/features.dart';
+import '../state/eco_fit_app_state.dart';
 import 'app_routes.dart';
 
 class AppRouter {
-  AppRouter();
+  AppRouter({this.enforceAuthentication = false});
+
+  final bool enforceAuthentication;
 
   final RouteObserver<ModalRoute<void>> routeObserver =
       RouteObserver<ModalRoute<void>>();
 
   Route<dynamic> onGenerateRoute(RouteSettings settings) {
     final mealId = AppRoutes.mealIdFrom(settings.name);
+    if (enforceAuthentication &&
+        !_isPublicRoute(settings.name) &&
+        !EcoFitAppState.instance.isAuthenticated) {
+      return _page(
+        const RouteSettings(name: AppRoutes.login),
+        const LoginScreen(),
+      );
+    }
     if (mealId != null) {
       return _page(settings, MealDetailScreen(mealId: mealId));
     }
@@ -43,6 +54,12 @@ class AppRouter {
 
     return _page(settings, screen);
   }
+
+  bool _isPublicRoute(String? route) =>
+      route == AppRoutes.splash ||
+      route == AppRoutes.onboardingFood ||
+      route == AppRoutes.onboardingWorkout ||
+      route == AppRoutes.login;
 
   MaterialPageRoute<void> _page(RouteSettings settings, Widget screen) {
     return MaterialPageRoute<void>(settings: settings, builder: (_) => screen);
