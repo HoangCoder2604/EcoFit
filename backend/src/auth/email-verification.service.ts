@@ -26,13 +26,14 @@ export class EmailVerificationService {
       this.logger.log(`[LOCAL ONLY] Mã xác minh cho ${email}: ${code}`);
       return;
     }
+    const ttlMinutes = this.config.get<number>('EMAIL_VERIFICATION_TTL_MINUTES', 10);
     try {
       await this.transporter.sendMail({
         from: this.config.getOrThrow<string>('EMAIL_FROM'),
         to: email,
         subject: 'Mã xác minh tài khoản Eco Fit',
-        text: `Mã xác minh Eco Fit của bạn là ${code}. Mã có hiệu lực trong 10 phút.`,
-        html: `<p>Mã xác minh Eco Fit của bạn:</p><p style="font-size:28px;font-weight:700;letter-spacing:6px">${code}</p><p>Mã có hiệu lực trong 10 phút. Nếu bạn không yêu cầu, hãy bỏ qua email này.</p>`,
+        text: `Mã xác minh Eco Fit của bạn là ${code}. Mã có hiệu lực trong ${ttlMinutes} phút.`,
+        html: `<p>Mã xác minh Eco Fit của bạn:</p><p style="font-size:28px;font-weight:700;letter-spacing:6px">${code}</p><p>Mã có hiệu lực trong ${ttlMinutes} phút. Nếu bạn không yêu cầu, hãy bỏ qua email này.</p>`,
       });
     } catch {
       throw new ServiceUnavailableException('Chưa thể gửi email xác minh. Vui lòng thử lại.');

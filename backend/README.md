@@ -47,7 +47,7 @@ npm run build
 - `npm run db:deploy` áp dụng migration đã có trong production.
 - `npm run db:studio` mở Prisma Studio.
 
-Schema hiện có `User`, `RefreshSession`, `EmailVerification` và `AuthIdentity` phục vụ Authentication. Các model hồ sơ, dinh dưỡng và tập luyện sẽ được bổ sung ở phase schema nghiệp vụ.
+Schema hiện có `User`, `PendingRegistration`, `RefreshSession` và `AuthIdentity` phục vụ Authentication. Đăng ký chỉ chuyển từ `PendingRegistration` sang `User` sau khi xác minh email thành công.
 
 ## Authentication
 
@@ -74,9 +74,17 @@ Schema hiện có `User`, `RefreshSession`, `EmailVerification` và `AuthIdentit
 Ví dụ build:
 
 ```bash
-flutter build web --dart-define=GOOGLE_WEB_CLIENT_ID=123.apps.googleusercontent.com
-flutter build apk --debug --dart-define=GOOGLE_WEB_CLIENT_ID=123.apps.googleusercontent.com
+flutter build web --dart-define-from-file=config/google_oauth.local.json
+flutter build apk --debug --dart-define-from-file=config/google_oauth.local.json
 ```
+
+Khi phát triển web, luôn dùng origin cố định đã đăng ký trong Google Cloud:
+
+```bash
+flutter run -d chrome --web-hostname localhost --web-port 8088 --dart-define-from-file=config/google_oauth.local.json
+```
+
+Xem checklist cấu hình tại [`../flutter_app/GOOGLE_SIGN_IN_SETUP.md`](../flutter_app/GOOGLE_SIGN_IN_SETUP.md).
 
 Xem hướng dẫn production chi tiết tại [`DEPLOYMENT.md`](DEPLOYMENT.md).
 

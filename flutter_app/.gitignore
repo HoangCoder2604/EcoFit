@@ -32,6 +32,7 @@ migrate_working_dir/
 .pub/
 /build/
 /coverage/
+/config/google_oauth.local.json
 
 # Symbolication related
 app.*.symbols

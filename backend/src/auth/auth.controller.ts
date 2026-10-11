@@ -18,8 +18,8 @@ export class AuthController {
   @Post('register')
   @Throttle({ default: { limit: 3, ttl: 60_000 } })
   @ApiOperation({ summary: 'Tạo tài khoản Eco Fit' })
-  register(@Body() input: RegisterDto, @Req() request: Request, @Ip() ipAddress: string) {
-    return this.auth.register(input, this.metadata(request, ipAddress));
+  register(@Body() input: RegisterDto) {
+    return this.auth.register(input);
   }
 
   @Post('login')

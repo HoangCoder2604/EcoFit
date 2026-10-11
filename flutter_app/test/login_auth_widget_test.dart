@@ -160,7 +160,7 @@ void main() {
                 'data': {
                   'verificationRequired': true,
                   'email': 'new@example.com',
-                  'expiresAt': '2026-09-25T15:00:00.000Z',
+                  'expiresAt': '2099-09-25T15:00:00.000Z',
                   'developmentCode': '123456',
                 },
               }),
@@ -216,5 +216,165 @@ void main() {
     await tester.tap(find.byKey(const Key('auth-verify-submit')));
     await tester.pumpAndSettle();
     expect(find.text('AUTHENTICATED_HOME'), findsOneWidget);
+  });
+
+  testWidgets('gửi lại mã thay mã cũ và chỉ mã mới xác minh thành công', (
+    tester,
+  ) async {
+    var resendCalled = false;
+    EcoFitAppState.instance.setAuthApiForTesting(
+      AuthApi(
+        baseUrl: 'http://api.test/api/v1',
+        client: MockClient((request) async {
+          if (request.url.path.endsWith('/auth/register')) {
+            return http.Response(
+              jsonEncode({
+                'success': true,
+                'data': {
+                  'verificationRequired': true,
+                  'email': 'resend@example.com',
+                  'expiresAt': '2099-10-01T15:00:00.000Z',
+                  'developmentCode': '111111',
+                },
+              }),
+              201,
+            );
+          }
+          if (request.url.path.endsWith('/auth/email/resend')) {
+            resendCalled = true;
+            return http.Response(
+              jsonEncode({
+                'success': true,
+                'data': {
+                  'verificationRequired': true,
+                  'email': 'resend@example.com',
+                  'expiresAt': '2099-10-01T15:10:00.000Z',
+                  'developmentCode': '222222',
+                },
+              }),
+              200,
+            );
+          }
+          final body = jsonDecode(request.body) as Map<String, dynamic>;
+          expect(body['code'], '222222');
+          return http.Response(
+            jsonEncode({
+              'success': true,
+              'data': {
+                'accessToken': 'resent-access',
+                'refreshToken': 'resent-refresh',
+                'user': {
+                  'id': 'resent-user',
+                  'email': 'resend@example.com',
+                  'displayName': 'Resend User',
+                  'role': 'USER',
+                },
+              },
+            }),
+            200,
+          );
+        }),
+      ),
+    );
+    await pumpLogin(tester, const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.tap(find.text('Tạo tài khoản'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('auth-display-name')),
+      'Resend User',
+    );
+    await tester.enterText(
+      find.byKey(const Key('auth-email')),
+      'resend@example.com',
+    );
+    await tester.enterText(find.byKey(const Key('auth-password')), 'EcoFit123');
+    await tester.tap(find.byKey(const Key('auth-submit')));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const Key('auth-verification-code')))
+          .controller!
+          .text,
+      '111111',
+    );
+
+    await tester.ensureVisible(find.text('Gửi lại mã'));
+    await tester.tap(find.text('Gửi lại mã'));
+    await tester.pumpAndSettle();
+
+    expect(resendCalled, isTrue);
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const Key('auth-verification-code')))
+          .controller!
+          .text,
+      '222222',
+    );
+
+    await tester.ensureVisible(find.byKey(const Key('auth-verify-submit')));
+    await tester.tap(find.byKey(const Key('auth-verify-submit')));
+    await tester.pumpAndSettle();
+    expect(find.text('AUTHENTICATED_HOME'), findsOneWidget);
+  });
+
+  testWidgets('reload khôi phục đúng màn hình đang chờ xác minh email', (
+    tester,
+  ) async {
+    AuthApi pendingVerificationApi() => AuthApi(
+      baseUrl: 'http://api.test/api/v1',
+      client: MockClient(
+        (_) async => http.Response(
+          jsonEncode({
+            'success': true,
+            'data': {
+              'verificationRequired': true,
+              'email': 'reload@example.com',
+              'expiresAt': '2099-10-01T15:00:00.000Z',
+              'developmentCode': '654321',
+            },
+          }),
+          201,
+        ),
+      ),
+    );
+
+    EcoFitAppState.instance.setAuthApiForTesting(pendingVerificationApi());
+    await pumpLogin(tester, const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.tap(find.text('Tạo tài khoản'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('auth-display-name')),
+      'Reload User',
+    );
+    await tester.enterText(
+      find.byKey(const Key('auth-email')),
+      'reload@example.com',
+    );
+    await tester.enterText(find.byKey(const Key('auth-password')), 'EcoFit123');
+    await tester.tap(find.byKey(const Key('auth-submit')));
+    await tester.pumpAndSettle();
+    expect(find.text('Xác minh email'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+    EcoFitAppState.instance.resetForTesting();
+    EcoFitAppState.instance.setAuthApiForTesting(pendingVerificationApi());
+
+    await pumpLogin(tester, const Size(390, 844));
+
+    expect(find.text('Xác minh email'), findsOneWidget);
+    expect(find.textContaining('reload@example.com'), findsOneWidget);
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const Key('auth-verification-code')))
+          .controller!
+          .text,
+      '654321',
+    );
   });
 }

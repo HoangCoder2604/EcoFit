@@ -17,6 +17,13 @@ class EcoFitAppState extends ChangeNotifier {
   static const _refreshTokenKey = 'auth.refreshToken';
   static const _authEmailKey = 'auth.email';
   static const _authDisplayNameKey = 'auth.displayName';
+  static const _pendingVerificationEmailKey = 'auth.pendingVerification.email';
+  static const _pendingVerificationExpiresAtKey =
+      'auth.pendingVerification.expiresAt';
+  static const _pendingVerificationDevelopmentCodeKey =
+      'auth.pendingVerification.developmentCode';
+  static const _pendingVerificationRememberKey =
+      'auth.pendingVerification.remember';
 
   Future<SharedPreferences> get _prefs async =>
       _preferences ??= await SharedPreferences.getInstance();
@@ -38,12 +45,17 @@ class EcoFitAppState extends ChangeNotifier {
   String? _accessToken;
   String? _refreshToken;
   AuthUser? _authUser;
+  EmailVerificationChallenge? _pendingEmailVerification;
+  bool _pendingVerificationRemember = true;
 
   bool _loaded = false;
 
   bool get isLoaded => _loaded;
   bool get isAuthenticated => _accessToken != null && _authUser != null;
   AuthUser? get authUser => _authUser;
+  EmailVerificationChallenge? get pendingEmailVerification =>
+      _pendingEmailVerification;
+  bool get pendingVerificationRemember => _pendingVerificationRemember;
 
   String get initials {
     final words = name
@@ -87,6 +99,7 @@ class EcoFitAppState extends ChangeNotifier {
           preferences.getBool('settings.weeklyReport') ?? weeklyReport;
       language = preferences.getString('settings.language') ?? language;
       appearance = preferences.getString('settings.appearance') ?? appearance;
+      await _restorePendingEmailVerification(preferences);
       final storedAccessToken = preferences.getString(_accessTokenKey);
       final storedRefreshToken = preferences.getString(_refreshTokenKey);
       if (storedAccessToken != null && storedRefreshToken != null) {
@@ -115,11 +128,13 @@ class EcoFitAppState extends ChangeNotifier {
     required String password,
     required bool remember,
   }) async {
-    return _authApi.register(
+    final challenge = await _authApi.register(
       email: email,
       displayName: displayName,
       password: password,
     );
+    await _savePendingEmailVerification(challenge, remember: remember);
+    return challenge;
   }
 
   Future<void> verifyEmail({
@@ -131,8 +146,29 @@ class EcoFitAppState extends ChangeNotifier {
     await _applySession(session, persist: remember);
   }
 
-  Future<EmailVerificationChallenge?> resendVerification(String email) =>
-      _authApi.resendVerification(email);
+  Future<EmailVerificationChallenge?> resendVerification(String email) async {
+    final challenge = await _authApi.resendVerification(email);
+    if (challenge != null) {
+      await _savePendingEmailVerification(
+        challenge,
+        remember: _pendingVerificationRemember,
+      );
+    }
+    return challenge;
+  }
+
+  Future<void> clearPendingEmailVerification() async {
+    _pendingEmailVerification = null;
+    _pendingVerificationRemember = true;
+    final preferences = await _prefs;
+    await Future.wait([
+      preferences.remove(_pendingVerificationEmailKey),
+      preferences.remove(_pendingVerificationExpiresAtKey),
+      preferences.remove(_pendingVerificationDevelopmentCodeKey),
+      preferences.remove(_pendingVerificationRememberKey),
+    ]);
+    notifyListeners();
+  }
 
   Future<void> loginWithGoogle({
     required String idToken,
@@ -182,6 +218,8 @@ class EcoFitAppState extends ChangeNotifier {
     _accessToken = session.accessToken;
     _refreshToken = session.refreshToken;
     _authUser = session.user;
+    _pendingEmailVerification = null;
+    _pendingVerificationRemember = true;
     name = session.user.displayName;
     final preferences = await _prefs;
     await preferences.setString('profile.name', name);
@@ -191,6 +229,10 @@ class EcoFitAppState extends ChangeNotifier {
         preferences.setString(_refreshTokenKey, session.refreshToken),
         preferences.setString(_authEmailKey, session.user.email),
         preferences.setString(_authDisplayNameKey, session.user.displayName),
+        preferences.remove(_pendingVerificationEmailKey),
+        preferences.remove(_pendingVerificationExpiresAtKey),
+        preferences.remove(_pendingVerificationDevelopmentCodeKey),
+        preferences.remove(_pendingVerificationRememberKey),
       ]);
     } else {
       await Future.wait([
@@ -198,6 +240,10 @@ class EcoFitAppState extends ChangeNotifier {
         preferences.remove(_refreshTokenKey),
         preferences.remove(_authEmailKey),
         preferences.remove(_authDisplayNameKey),
+        preferences.remove(_pendingVerificationEmailKey),
+        preferences.remove(_pendingVerificationExpiresAtKey),
+        preferences.remove(_pendingVerificationDevelopmentCodeKey),
+        preferences.remove(_pendingVerificationRememberKey),
       ]);
     }
     if (notify) notifyListeners();
@@ -215,6 +261,68 @@ class EcoFitAppState extends ChangeNotifier {
       preferences.remove(_authDisplayNameKey),
     ]);
     if (notify) notifyListeners();
+  }
+
+  Future<void> _savePendingEmailVerification(
+    EmailVerificationChallenge challenge, {
+    required bool remember,
+  }) async {
+    _pendingEmailVerification = challenge;
+    _pendingVerificationRemember = remember;
+    final preferences = await _prefs;
+    final writes = <Future<bool>>[
+      preferences.setString(_pendingVerificationEmailKey, challenge.email),
+      preferences.setString(
+        _pendingVerificationExpiresAtKey,
+        challenge.expiresAt.toUtc().toIso8601String(),
+      ),
+      preferences.setBool(_pendingVerificationRememberKey, remember),
+    ];
+    final developmentCode = challenge.developmentCode;
+    writes.add(
+      developmentCode == null
+          ? preferences.remove(_pendingVerificationDevelopmentCodeKey)
+          : preferences.setString(
+              _pendingVerificationDevelopmentCodeKey,
+              developmentCode,
+            ),
+    );
+    await Future.wait(writes);
+    notifyListeners();
+  }
+
+  Future<void> _restorePendingEmailVerification(
+    SharedPreferences preferences,
+  ) async {
+    final email = preferences.getString(_pendingVerificationEmailKey);
+    final expiresAtRaw = preferences.getString(
+      _pendingVerificationExpiresAtKey,
+    );
+    final expiresAt = expiresAtRaw == null
+        ? null
+        : DateTime.tryParse(expiresAtRaw);
+    if (email == null ||
+        expiresAt == null ||
+        !expiresAt.isAfter(DateTime.now())) {
+      await Future.wait([
+        preferences.remove(_pendingVerificationEmailKey),
+        preferences.remove(_pendingVerificationExpiresAtKey),
+        preferences.remove(_pendingVerificationDevelopmentCodeKey),
+        preferences.remove(_pendingVerificationRememberKey),
+      ]);
+      _pendingEmailVerification = null;
+      _pendingVerificationRemember = true;
+      return;
+    }
+    _pendingEmailVerification = EmailVerificationChallenge(
+      email: email,
+      expiresAt: expiresAt,
+      developmentCode: preferences.getString(
+        _pendingVerificationDevelopmentCodeKey,
+      ),
+    );
+    _pendingVerificationRemember =
+        preferences.getBool(_pendingVerificationRememberKey) ?? true;
   }
 
   Future<void> updateDailyReminders(bool value) async {
@@ -270,6 +378,8 @@ class EcoFitAppState extends ChangeNotifier {
     _accessToken = null;
     _refreshToken = null;
     _authUser = null;
+    _pendingEmailVerification = null;
+    _pendingVerificationRemember = true;
     _authApi = AuthApi();
   }
 

@@ -822,13 +822,31 @@ class _LoginScreenState extends State<LoginScreen> {
   StreamSubscription<GoogleSignInAuthenticationEvent>? googleEvents;
   EmailVerificationChallenge? verificationChallenge;
   String? emailError, passwordError, displayNameError, submitError;
+  String? verificationNotice;
 
-  bool get googleConfigured => googleClientId.isNotEmpty;
+  bool get googleConfigured =>
+      RegExp(r'^[A-Za-z0-9._-]+\.apps\.googleusercontent\.com$')
+          .hasMatch(googleClientId);
 
   @override
   void initState() {
     super.initState();
+    unawaited(_restorePendingVerification());
     if (googleConfigured) _initializeGoogle();
+  }
+
+  Future<void> _restorePendingVerification() async {
+    await EcoFitAppState.instance.load();
+    final challenge = EcoFitAppState.instance.pendingEmailVerification;
+    if (!mounted || challenge == null) return;
+    setState(() {
+      verificationChallenge = challenge;
+      awaitingEmailVerification = true;
+      remember = EcoFitAppState.instance.pendingVerificationRemember;
+      emailController.text = challenge.email;
+      verificationCodeController.text = challenge.developmentCode ?? '';
+      submitError = null;
+    });
   }
 
   Future<void> _initializeGoogle() async {
@@ -852,7 +870,7 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       _googleInitialization ??= GoogleSignIn.instance.initialize(
         clientId: kIsWeb ? googleClientId : null,
-        serverClientId: googleClientId,
+        serverClientId: kIsWeb ? null : googleClientId,
       );
       await _googleInitialization;
       if (mounted) setState(() => googleReady = true);
@@ -940,6 +958,7 @@ class _LoginScreenState extends State<LoginScreen> {
         setState(() {
           verificationChallenge = challenge;
           awaitingEmailVerification = true;
+          verificationNotice = null;
           verificationCodeController.text = challenge.developmentCode ?? '';
         });
         return;
@@ -956,6 +975,7 @@ class _LoginScreenState extends State<LoginScreen> {
             setState(() {
               verificationChallenge = challenge;
               awaitingEmailVerification = true;
+              verificationNotice = null;
               verificationCodeController.text = challenge.developmentCode ?? '';
               submitError = null;
             });
@@ -996,6 +1016,7 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() {
       submitting = true;
       submitError = null;
+      verificationNotice = null;
     });
     try {
       await EcoFitAppState.instance.verifyEmail(
@@ -1017,6 +1038,7 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() {
       submitting = true;
       submitError = null;
+      verificationNotice = null;
     });
     try {
       final challenge = await EcoFitAppState.instance.resendVerification(
@@ -1027,6 +1049,10 @@ class _LoginScreenState extends State<LoginScreen> {
         setState(() {
           verificationChallenge = challenge;
           verificationCodeController.text = challenge.developmentCode ?? '';
+          verificationNotice = l10n(
+            'Đã gửi mã mới. Mã cũ không còn hiệu lực.',
+            'A new code was sent. The previous code is no longer valid.',
+          );
         });
       }
     } on AuthApiException catch (error) {
@@ -1060,7 +1086,18 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _completeGoogleSignIn(GoogleSignInAccount account) async {
     final idToken = account.authentication.idToken;
-    if (idToken == null || submitting) return;
+    if (submitting) return;
+    if (idToken == null) {
+      if (mounted) {
+        setState(
+          () => submitError = l10n(
+            'Google không trả về mã định danh. Hãy kiểm tra Web Client ID.',
+            'Google did not return an ID token. Check the Web Client ID.',
+          ),
+        );
+      }
+      return;
+    }
     setState(() {
       submitting = true;
       submitError = null;
@@ -1411,6 +1448,25 @@ class _LoginScreenState extends State<LoginScreen> {
         style: TextStyle(color: Theme.of(context).colorScheme.tertiary),
       ),
     ],
+    if (verificationNotice != null) ...[
+      gap12,
+      Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.primaryContainer,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Text(
+          verificationNotice!,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onPrimaryContainer,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
+    ],
     gap16,
     TextField(
       key: const Key('auth-verification-code'),
@@ -1464,8 +1520,12 @@ class _LoginScreenState extends State<LoginScreen> {
           onPressed: submitting
               ? null
               : () => setState(() {
+                  unawaited(
+                    EcoFitAppState.instance.clearPendingEmailVerification(),
+                  );
                   awaitingEmailVerification = false;
                   verificationChallenge = null;
+                  verificationNotice = null;
                   submitError = null;
                 }),
           child: Text(l10n('Đổi email', 'Change email')),

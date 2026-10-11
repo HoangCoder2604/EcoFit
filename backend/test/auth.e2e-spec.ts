@@ -20,11 +20,12 @@ describe('Authentication (e2e)', () => {
   });
 
   afterAll(async () => {
+    await prisma.pendingRegistration.deleteMany({ where: { email } });
     await prisma.user.deleteMany({ where: { email } });
     await app.close();
   });
 
-  it('đăng ký, chặn email trùng và không trả password hash', async () => {
+  it('chỉ lưu đăng ký tạm và chưa tạo user trước khi xác minh', async () => {
     const registered = await request(app.getHttpServer())
       .post('/api/v1/auth/register')
       .send({ email: email.toUpperCase(), displayName: 'Auth E2E', password })
@@ -34,11 +35,12 @@ describe('Authentication (e2e)', () => {
     verificationCode = registered.body.data.developmentCode as string;
     expect(verificationCode).toMatch(/^\d{6}$/);
     expect(registered.body.data.accessToken).toBeUndefined();
-
-    await request(app.getHttpServer())
-      .post('/api/v1/auth/register')
-      .send({ email, displayName: 'Trùng', password })
-      .expect(409);
+    expect(registered.body.data.passwordHash).toBeUndefined();
+    expect(await prisma.user.findUnique({ where: { email } })).toBeNull();
+    expect(await prisma.pendingRegistration.findUnique({ where: { email } })).toMatchObject({
+      email,
+      displayName: 'Auth E2E',
+    });
 
     await request(app.getHttpServer())
       .post('/api/v1/auth/login')
@@ -46,19 +48,52 @@ describe('Authentication (e2e)', () => {
       .expect(403);
   });
 
-  it('xác minh email, đăng nhập và truy cập endpoint được bảo vệ', async () => {
-    const verified = await request(app.getHttpServer())
+  it('từ chối mã sai, mã hết hạn và mã cũ sau khi gửi lại', async () => {
+    await request(app.getHttpServer())
+      .post('/api/v1/auth/email/verify')
+      .send({ email, code: verificationCode === '000000' ? '999999' : '000000' })
+      .expect(400);
+
+    await prisma.pendingRegistration.update({
+      where: { email },
+      data: { expiresAt: new Date(Date.now() - 1_000) },
+    });
+
+    await request(app.getHttpServer())
       .post('/api/v1/auth/email/verify')
       .send({ email, code: verificationCode })
-      .expect(200);
+      .expect(400);
 
+    const resent = await request(app.getHttpServer())
+      .post('/api/v1/auth/email/resend')
+      .send({ email })
+      .expect(200);
+    const secondCode = resent.body.data.developmentCode as string;
+    expect(secondCode).toMatch(/^\d{6}$/);
+
+    await request(app.getHttpServer())
+      .post('/api/v1/auth/email/verify')
+      .send({ email, code: verificationCode })
+      .expect(400);
+
+    const verified = await request(app.getHttpServer())
+      .post('/api/v1/auth/email/verify')
+      .send({ email, code: secondCode })
+      .expect(200);
     expect(verified.body.data).toMatchObject({
       tokenType: 'Bearer',
       accessTokenExpiresIn: 900,
       user: { email, displayName: 'Auth E2E', role: 'USER' },
     });
     expect(verified.body.data.user.passwordHash).toBeUndefined();
+    expect(await prisma.pendingRegistration.findUnique({ where: { email } })).toBeNull();
+    expect(await prisma.user.findUnique({ where: { email } })).toMatchObject({
+      email,
+      displayName: 'Auth E2E',
+    });
+  });
 
+  it('đăng nhập và truy cập endpoint được bảo vệ sau khi xác minh', async () => {
     await request(app.getHttpServer())
       .post('/api/v1/auth/login')
       .send({ email, password: 'SaiMatKhau1' })
@@ -77,6 +112,20 @@ describe('Authentication (e2e)', () => {
       .expect(200);
 
     expect(me.body.data).toMatchObject({ email, displayName: 'Auth E2E' });
+  });
+
+  it('gửi lại mã không làm lộ email có tồn tại hay đã xác minh', async () => {
+    await request(app.getHttpServer())
+      .post('/api/v1/auth/email/resend')
+      .send({ email })
+      .expect(200)
+      .expect(({ body }) => expect(body.data).toEqual({ sent: true }));
+
+    await request(app.getHttpServer())
+      .post('/api/v1/auth/email/resend')
+      .send({ email: `missing-${Date.now()}@example.com` })
+      .expect(200)
+      .expect(({ body }) => expect(body.data).toEqual({ sent: true }));
   });
 
   it('không giả lập Google khi chưa có OAuth Client ID', async () => {

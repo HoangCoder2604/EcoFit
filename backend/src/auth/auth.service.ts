@@ -12,7 +12,7 @@ import { compare, hash } from 'bcryptjs';
 import { createHash, randomBytes, randomInt, randomUUID } from 'node:crypto';
 import { OAuth2Client } from 'google-auth-library';
 import { PrismaService } from '../database/prisma.service';
-import type { User } from '../generated/prisma/client';
+import type { PendingRegistration, User } from '../generated/prisma/client';
 import { AuthProvider, UserStatus } from '../generated/prisma/enums';
 import { parseGoogleClientIds } from '../config/environment';
 import type { ClientMetadata } from './auth.types';
@@ -37,7 +37,7 @@ export class AuthService {
     private readonly emailVerification: EmailVerificationService,
   ) {}
 
-  async register(input: RegisterDto, metadata: ClientMetadata) {
+  async register(input: RegisterDto) {
     const email = input.email.trim().toLowerCase();
     const existing = await this.prisma.user.findUnique({ where: { email }, select: { id: true } });
     if (existing) throw new ConflictException('Email đã được sử dụng');
@@ -46,25 +46,22 @@ export class AuthService {
       input.password,
       this.config.get<number>('PASSWORD_BCRYPT_ROUNDS', 12),
     );
-    let user: User;
-    try {
-      user = await this.prisma.user.create({
-        data: { email, displayName: input.displayName.trim(), passwordHash },
-      });
-    } catch (error) {
-      if (this.isUniqueConstraintError(error)) {
-        throw new ConflictException('Email đã được sử dụng');
-      }
-      throw error;
-    }
-
-    return this.createEmailVerification(user);
+    return this.createPendingRegistration(email, input.displayName.trim(), passwordHash);
   }
 
   async login(input: LoginDto, metadata: ClientMetadata) {
     const email = input.email.trim().toLowerCase();
     const user = await this.prisma.user.findUnique({ where: { email } });
-    if (!user || !user.passwordHash || !(await compare(input.password, user.passwordHash))) {
+    if (!user) {
+      const pending = await this.prisma.pendingRegistration.findUnique({ where: { email } });
+      if (pending && (await compare(input.password, pending.passwordHash))) {
+        throw new ForbiddenException(
+          'Email chưa được xác minh. Vui lòng nhập mã đã gửi tới email.',
+        );
+      }
+      throw new UnauthorizedException('Email hoặc mật khẩu không đúng');
+    }
+    if (!user.passwordHash || !(await compare(input.password, user.passwordHash))) {
       throw new UnauthorizedException('Email hoặc mật khẩu không đúng');
     }
     if (user.status !== UserStatus.ACTIVE) {
@@ -83,46 +80,58 @@ export class AuthService {
 
   async verifyEmail(input: VerifyEmailDto, metadata: ClientMetadata) {
     const email = input.email.trim().toLowerCase();
-    const user = await this.prisma.user.findUnique({ where: { email } });
-    if (!user) throw new BadRequestException('Mã xác minh không hợp lệ hoặc đã hết hạn');
-    if (user.emailVerifiedAt) return this.issueSession(user, metadata);
-
-    const verification = await this.prisma.emailVerification.findFirst({
-      where: { userId: user.id, consumedAt: null },
-      orderBy: { createdAt: 'desc' },
-    });
-    if (!verification || verification.expiresAt <= new Date() || verification.attempts >= 5) {
+    const registration = await this.prisma.pendingRegistration.findUnique({ where: { email } });
+    if (!registration || registration.expiresAt <= new Date() || registration.attempts >= 5) {
       throw new BadRequestException('Mã xác minh không hợp lệ hoặc đã hết hạn');
     }
-    if (verification.codeHash !== this.verificationHash(user.id, input.code)) {
-      await this.prisma.emailVerification.update({
-        where: { id: verification.id },
+    if (registration.codeHash !== this.verificationHash(registration.id, input.code)) {
+      await this.prisma.pendingRegistration.update({
+        where: { id: registration.id },
         data: {
           attempts: { increment: 1 },
-          ...(verification.attempts >= 4 ? { consumedAt: new Date() } : {}),
         },
       });
       throw new BadRequestException('Mã xác minh không hợp lệ hoặc đã hết hạn');
     }
 
-    const verified = await this.prisma.$transaction(async (transaction) => {
-      await transaction.emailVerification.update({
-        where: { id: verification.id },
-        data: { consumedAt: new Date() },
+    let verified: User;
+    try {
+      verified = await this.prisma.$transaction(async (transaction) => {
+        const claimed = await transaction.pendingRegistration.deleteMany({
+          where: {
+            id: registration.id,
+            codeHash: registration.codeHash,
+            expiresAt: { gt: new Date() },
+            attempts: { lt: 5 },
+          },
+        });
+        if (claimed.count !== 1) {
+          throw new BadRequestException('Mã xác minh không hợp lệ hoặc đã hết hạn');
+        }
+        return transaction.user.create({
+          data: {
+            email: registration.email,
+            displayName: registration.displayName,
+            passwordHash: registration.passwordHash,
+            emailVerifiedAt: new Date(),
+            lastLoginAt: new Date(),
+          },
+        });
       });
-      return transaction.user.update({
-        where: { id: user.id },
-        data: { emailVerifiedAt: new Date(), lastLoginAt: new Date() },
-      });
-    });
+    } catch (error) {
+      if (this.isUniqueConstraintError(error)) {
+        throw new ConflictException('Email đã được sử dụng');
+      }
+      throw error;
+    }
     return this.issueSession(verified, metadata);
   }
 
   async resendVerification(rawEmail: string) {
     const email = rawEmail.trim().toLowerCase();
-    const user = await this.prisma.user.findUnique({ where: { email } });
-    if (!user || user.emailVerifiedAt) return { sent: true };
-    return this.createEmailVerification(user);
+    const registration = await this.prisma.pendingRegistration.findUnique({ where: { email } });
+    if (!registration) return { sent: true };
+    return this.refreshPendingVerification(registration);
   }
 
   async googleLogin(idToken: string, metadata: ClientMetadata) {
@@ -251,24 +260,61 @@ export class AuthService {
     return this.buildAuthResponse(user, refresh.rawToken, refresh.session.expiresAt);
   }
 
-  private async createEmailVerification(user: User) {
+  private async createPendingRegistration(
+    email: string,
+    displayName: string,
+    passwordHash: string,
+  ) {
+    const existing = await this.prisma.pendingRegistration.findUnique({ where: { email } });
+    const registrationId = existing?.id ?? randomUUID();
     const code = randomInt(100000, 1000000).toString();
     const expiresAt = new Date(
       Date.now() + this.config.get<number>('EMAIL_VERIFICATION_TTL_MINUTES', 10) * 60_000,
     );
-    await this.prisma.$transaction(async (transaction) => {
-      await transaction.emailVerification.updateMany({
-        where: { userId: user.id, consumedAt: null },
-        data: { consumedAt: new Date() },
-      });
-      await transaction.emailVerification.create({
-        data: { userId: user.id, codeHash: this.verificationHash(user.id, code), expiresAt },
-      });
+    const registration = await this.prisma.pendingRegistration.upsert({
+      where: { email },
+      create: {
+        id: registrationId,
+        email,
+        displayName,
+        passwordHash,
+        codeHash: this.verificationHash(registrationId, code),
+        expiresAt,
+      },
+      update: {
+        displayName,
+        passwordHash,
+        codeHash: this.verificationHash(registrationId, code),
+        expiresAt,
+        attempts: 0,
+      },
     });
-    await this.emailVerification.sendCode(user.email, code);
+    await this.emailVerification.sendCode(registration.email, code);
     return {
       verificationRequired: true,
-      email: user.email,
+      email: registration.email,
+      expiresAt,
+      developmentCode: this.emailVerification.developmentCode(code),
+    };
+  }
+
+  private async refreshPendingVerification(registration: PendingRegistration) {
+    const code = randomInt(100000, 1000000).toString();
+    const expiresAt = new Date(
+      Date.now() + this.config.get<number>('EMAIL_VERIFICATION_TTL_MINUTES', 10) * 60_000,
+    );
+    await this.prisma.pendingRegistration.update({
+      where: { id: registration.id },
+      data: {
+        codeHash: this.verificationHash(registration.id, code),
+        expiresAt,
+        attempts: 0,
+      },
+    });
+    await this.emailVerification.sendCode(registration.email, code);
+    return {
+      verificationRequired: true,
+      email: registration.email,
       expiresAt,
       developmentCode: this.emailVerification.developmentCode(code),
     };
